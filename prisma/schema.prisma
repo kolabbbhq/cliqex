@@ -1,0 +1,488 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum ServiceType {
+  GROCERY
+  ERRAND
+  CLEANING
+}
+
+enum OrderStatus {
+  NEW
+  QUOTED
+  AWAITING_PAYMENT
+  PAID
+  PROCESSING
+  ASSIGNED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum SourceType {
+  TEXT
+  IMAGE
+  VOICE
+}
+
+enum PaymentMethod {
+  PAYSTACK
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REFUNDED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VOICE
+  BUTTON_REPLY
+  LIST_REPLY
+  TEMPLATE
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum BuddyStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  BUSINESS_OWNER
+  AGENT
+}
+
+enum CampaignAudience {
+  ALL
+  ACTIVE
+  INACTIVE
+  VIP
+}
+
+enum CampaignStatus {
+  DRAFT
+  SENDING
+  DONE
+  FAILED
+}
+
+enum Plan {
+  STARTER
+  GROWTH
+  PRO
+}
+
+// ============================================================
+// BUSINESS
+// ============================================================
+model Business {
+  id   String @id @default(uuid())
+  name String
+  slug String @unique
+
+  // WhatsApp
+  whatsappPhoneId     String?
+  whatsappToken       String?
+  whatsappVerifyToken String?
+  flowId              String?
+  flowPrivateKey      String?
+    wabaId              String? // ✅ ADD THIS
+
+  // Payment
+  paystackSecretKey String?
+  bankName          String?
+  bankAccountNumber String?
+  bankAccountName   String?
+
+  // Branding
+  primaryColor    String  @default("#1a8a5e")
+  logoUrl         String?
+  faviconUrl      String?
+  tagline         String?
+
+  // Contact info shown to customers
+  businessPhone   String?
+  businessEmail   String?
+  businessAddress String?
+  websiteUrl      String?
+
+  // Operating hours
+  // { mon: { open: "08:00", close: "18:00", active: true }, tue: {...}, ... }
+  operatingHours Json?
+
+  // Operational settings
+  minOrderValue        Float  @default(0)
+  estimatedDeliveryMin Int    @default(30)
+  estimatedDeliveryMax Int    @default(60)
+  currencySymbol       String @default("₦")
+
+  // Custom WhatsApp message overrides
+  // { greeting: "...", orderReceived: "...", quoteFooter: "..." }
+  messageTemplates Json?
+
+  // Subscription
+  plan     Plan    @default(STARTER)
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  admins        Admin[]
+  customers     Customer[]
+  orders        Order[]
+  buddies       Buddy[]
+  campaigns     Campaign[]
+  messages      Message[]
+  payments      Payment[]
+  serviceConfig ServiceConfig?
+
+  @@map("businesses")
+}
+
+// ============================================================
+// SERVICE CONFIG
+// ============================================================
+model ServiceConfig {
+  id         String   @id @default(uuid())
+  businessId String   @unique
+  business   Business @relation(fields: [businessId], references: [id])
+
+  // Active services
+  // [{ id: "GROCERY", label: "Grocery Shopping", description: "...", active: true }]
+  services Json @default("[]")
+
+  // Delivery areas
+  // [{ id: "WUSE_2", label: "Wuse 2" }]
+  areas Json @default("[]")
+
+  // Flow content
+  welcomeText    String?
+  headerImageUrl String?
+
+  // Per-service banner images shown inside the Flow screens
+  // { GROCERY: "https://...", ERRAND: "https://...", CLEANING: "https://..." }
+  serviceBanners Json?
+
+  // Charges
+  serviceChargePercent Float @default(0)
+  vatPercent           Float @default(0)
+
+  // Flow behaviour toggles
+  showDeliveryEta Boolean @default(true)
+  collectBudget   Boolean @default(true)
+  collectStore    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("service_configs")
+}
+
+// ============================================================
+// CUSTOMER
+// ============================================================
+model Customer {
+  id      String  @id @default(uuid())
+  phone   String
+  name    String?
+  email   String?
+  address String?
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+
+  totalOrders Int     @default(0)
+  totalSpend  Decimal @default(0) @db.Decimal(12, 2)
+  isBlocked   Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders   Order[]
+  messages Message[]
+  payments Payment[]
+  reviews  Review[]
+
+  @@unique([businessId, phone])
+  @@index([businessId])
+  @@map("customers")
+}
+
+// ============================================================
+// ORDER
+// ============================================================
+model Order {
+  id          String @id @default(uuid())
+  orderNumber String
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  buddyId    String?
+  buddy      Buddy?   @relation(fields: [buddyId], references: [id])
+
+  serviceType ServiceType
+  status      OrderStatus @default(NEW)
+  sourceType  SourceType  @default(TEXT)
+
+  rawText     String?
+  rawMediaUrl String?
+  flowData    Json?
+
+  aiExtracted  Boolean @default(false)
+  aiConfidence Float?
+
+  deliveryFee     Decimal   @default(0) @db.Decimal(10, 2)
+  subtotal        Decimal   @default(0) @db.Decimal(10, 2)
+  total           Decimal   @default(0) @db.Decimal(10, 2)
+  deliveryAddress String?
+  scheduledAt     DateTime?
+    autoAckSent Boolean @default(false)
+
+
+  notes        String?
+  cancelReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items        OrderItem[]
+  messages     Message[]
+  payment      Payment?
+  review       Review?
+  priceHistory PriceHistory[]
+
+  @@unique([businessId, orderNumber])
+  @@index([businessId])
+  @@index([businessId, status])
+  @@index([businessId, customerId])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+// ============================================================
+// ORDER ITEM
+// ============================================================
+model OrderItem {
+  id      String @id @default(uuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  name             String
+  nameLower        String
+  quantity         String
+  unitPrice        Decimal? @db.Decimal(10, 2)
+  aiSuggestedPrice Decimal? @db.Decimal(10, 2)
+  aiConfidence     Float?
+  isAiExtracted    Boolean  @default(false)
+  sort             Int      @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([nameLower])
+  @@map("order_items")
+}
+
+// ============================================================
+// MESSAGE
+// ============================================================
+model Message {
+  id          String @id @default(uuid())
+  waMessageId String @unique
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id])
+  orderId       String?
+  order         Order?   @relation(fields: [orderId], references: [id])
+
+  direction     MessageDirection
+  type          MessageType
+  content       String?
+  mediaUrl      String?
+  buttonPayload String?
+  status        MessageStatus @default(SENT)
+
+  createdAt DateTime @default(now())
+
+  @@index([businessId])
+  @@index([customerId])
+  @@index([orderId])
+  @@map("messages")
+}
+
+// ============================================================
+// PAYMENT
+// ============================================================
+model Payment {
+  id String @id @default(uuid())
+
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+
+  orderId    String   @unique
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  method   PaymentMethod
+  status   PaymentStatus @default(PENDING)
+  amount   Decimal       @db.Decimal(10, 2)
+
+  paystackRef  String?  @unique
+  paystackLink String?
+  proofUrl     String?
+  confirmedBy  String?
+  confirmedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([paystackRef])
+  @@map("payments")
+}
+
+// ============================================================
+// BUDDY
+// ============================================================
+model Buddy {
+  id         String   @id @default(uuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+
+  name         String
+  phone        String
+  serviceTypes ServiceType[]
+  status       BuddyStatus @default(AVAILABLE)
+  isActive     Boolean     @default(true)
+  rating       Float       @default(0)
+  totalDeliveries Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders  Order[]
+  reviews Review[]
+
+  @@unique([businessId, phone])
+  @@index([businessId])
+  @@map("buddies")
+}
+
+// ============================================================
+// PRICE HISTORY
+// ============================================================
+model PriceHistory {
+  id          String      @id @default(uuid())
+  itemName    String
+  price       Decimal     @db.Decimal(10, 2)
+  serviceType ServiceType
+  orderId     String
+  order       Order       @relation(fields: [orderId], references: [id])
+  createdAt   DateTime    @default(now())
+
+  @@index([itemName])
+  @@index([itemName, serviceType])
+  @@index([createdAt])
+  @@map("price_history")
+}
+
+// ============================================================
+// ADMIN
+// ============================================================
+model Admin {
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(AGENT)
+  isActive     Boolean   @default(true)
+
+  businessId String?
+  business   Business? @relation(fields: [businessId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@map("admins")
+}
+
+// ============================================================
+// CAMPAIGN
+// ============================================================
+model Campaign {
+  id         String   @id @default(uuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+
+  createdBy    String
+  name         String
+  templateName String
+  templateVars Json?
+  audience     CampaignAudience
+  status       CampaignStatus   @default(DRAFT)
+  sentCount    Int              @default(0)
+  scheduledAt  DateTime?
+  sentAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([businessId])
+  @@map("campaigns")
+}
+
+// ============================================================
+// REVIEW
+// ============================================================
+model Review {
+  id         String   @id @default(uuid())
+  orderId    String   @unique
+  order      Order    @relation(fields: [orderId], references: [id])
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  buddyId    String?
+  buddy      Buddy?   @relation(fields: [buddyId], references: [id])
+
+  rating  Int
+  comment String?
+
+  createdAt DateTime @default(now())
+
+  @@map("reviews")
+}
