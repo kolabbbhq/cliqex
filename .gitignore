@@ -21,3 +21,7 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Keys — NEVER commit these
+*.pem
+*.b64
