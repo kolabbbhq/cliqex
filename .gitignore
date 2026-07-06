@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+dist/
+
+# Environment — NEVER commit these
+.env
+.env.local
+.env.production
+
+# Prisma
+prisma/migrations/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keys — NEVER commit these
+*.pem
+*.b64tsconfig.build.tsbuildinfo

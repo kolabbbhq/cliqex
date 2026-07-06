@@ -1,0 +1,358 @@
+{
+  "version": "7.3",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "SCREEN_SERVICE": ["SCREEN_DETAILS_GROCERY", "SCREEN_DETAILS_ERRAND", "SCREEN_DETAILS_CLEANING"],
+    "SCREEN_DETAILS_GROCERY": ["SCREEN_SUMMARY"],
+    "SCREEN_DETAILS_ERRAND": ["SCREEN_SUMMARY"],
+    "SCREEN_DETAILS_CLEANING": ["SCREEN_SUMMARY"],
+    "SCREEN_SUMMARY": []
+  },
+  "screens": [
+
+    {
+      "id": "SCREEN_SERVICE",
+      "title": "ErrandsBuddy",
+      "terminal": false,
+      "data": {
+        "customer_name":    { "type": "string", "__example__": "" },
+        "delivery_address": { "type": "string", "__example__": "" },
+        "phone_number":     { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Image",
+            "src": "https://errandsbuddy.com/assets/flow-header.png",
+            "height": 130,
+            "scale-type": "cover"
+          },
+          { "type": "TextSubheading", "text": "What can we help you with today?" },
+          { "type": "TextBody",       "text": "We connect you with trusted helpers for everyday tasks. Fast, reliable, and stress-free. Choose a service to get started." },
+          {
+            "type": "RadioButtonsGroup",
+            "name": "service_type",
+            "label": "Select a Service",
+            "required": true,
+            "data-source": [
+              { "id": "GROCERY",  "title": "Grocery Shopping", "description": "We shop your list & deliver right to your door" },
+              { "id": "ERRAND",   "title": "Run an Errand",    "description": "Pickups, drop-offs, pharmacy runs & more"       },
+              { "id": "CLEANING", "title": "Book a Cleaner",   "description": "Professional home or office cleaning service"   }
+            ]
+          },
+         {
+  "type": "Footer",
+  "label": "Continue →",
+  "on-click-action": {
+    "name": "data_exchange",
+    "payload": {
+      "service_type":     "${form.service_type}",
+      "customer_name":    "${data.customer_name}",
+      "delivery_address": "${data.delivery_address}",
+      "phone_number":     "${data.phone_number}"
+    }
+  }
+}
+        ]
+      }
+    },
+
+    {
+      "id": "SCREEN_DETAILS_GROCERY",
+      "title": "Grocery Shopping",
+      "terminal": false,
+      "data": {
+        "service_type":     { "type": "string", "__example__": "GROCERY" },
+        "customer_name":    { "type": "string", "__example__": "" },
+        "delivery_address": { "type": "string", "__example__": "" },
+        "phone_number":     { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "Image", "src": "https://errandsbuddy.com/assets/grocery-banner.png", "height": 160, "scale-type": "cover" },
+          { "type": "TextHeading", "text": " Grocery Shopping Request" },
+          { "type": "TextBody", "text": "Tell us what you need and we'll handle the rest. Fill in the details below and we'll get your order processed quickly." },
+          { "type": "TextArea",  "label": "Shopping List",              "name": "item_list",       "required": true,  "max-length": 1000, "helper-text": "List each item on a new line. E.g:\n• Indomie noodles x10\n• Peak Milk 1L x2\n• Semovita 2kg" },
+          { "type": "TextInput", "label": "Your Budget (₦)",            "name": "budget",          "required": true,  "input-type": "text",  "helper-text": "Enter total amount available for shopping" },
+          { "type": "TextInput", "label": "Preferred Store (Optional)", "name": "preferred_store", "required": false, "helper-text": "E.g. Shoprite, Wuse Market — leave blank if flexible" },
+          { "type": "TextSubheading", "text": "📍 Delivery Details" },
+          { "type": "TextInput", "label": "Your Full Name",   "name": "customer_name",    "required": true, "input-type": "text",  "init-value": "${data.customer_name}",    "helper-text": "Enter the name of the person receiving the order" },
+          { "type": "TextInput", "label": "Delivery Address", "name": "delivery_address", "required": true, "input-type": "text",  "init-value": "${data.delivery_address}", "helper-text": "House/flat number, street name, estate" },
+          {
+            "type": "Dropdown",
+            "label": "Delivery Area (Abuja)",
+            "name": "area",
+            "required": true,
+            "data-source": [
+              { "id": "ASOKORO",      "title": "Asokoro"                    },
+              { "id": "MAITAMA",      "title": "Maitama"                    },
+              { "id": "WUSE",         "title": "Wuse"                       },
+              { "id": "WUSE_2",       "title": "Wuse 2"                     },
+              { "id": "GARKI",        "title": "Garki"                      },
+              { "id": "GARKI_2",      "title": "Garki 2"                    },
+              { "id": "GWARINPA",     "title": "Gwarinpa"                   },
+              { "id": "JABI",         "title": "Jabi"                       },
+              { "id": "UTAKO",        "title": "Utako"                      },
+              { "id": "KUBWA",        "title": "Kubwa"                      },
+              { "id": "LIFECAMP",     "title": "Life Camp"                  },
+              { "id": "KADO",         "title": "Kado"                       },
+              { "id": "DURUMI",       "title": "Durumi"                     },
+              { "id": "LUGBE",        "title": "Lugbe"                      },
+              { "id": "GALADIMAWA",   "title": "Galadimawa"                 },
+              { "id": "LOKOGOMA",     "title": "Lokogoma"                   },
+              { "id": "NBORA",        "title": "Nbora"                      },
+              { "id": "DAWAKI",       "title": "Dawaki"                     },
+              { "id": "KARMO",        "title": "Karmo"                      },
+              { "id": "KARU",         "title": "Karu"                       },
+              { "id": "NYANYA",       "title": "Nyanya"                     },
+              { "id": "MPAPE",        "title": "Mpape"                      },
+              { "id": "KATAMPE",      "title": "Katampe"                    },
+              { "id": "CENTRAL_AREA", "title": "Central Area"               },
+              { "id": "OTHER",        "title": "Other (specify in address)" }
+            ]
+          },
+          { "type": "TextInput", "label": "Phone Number",                    "name": "phone_number",   "required": true,  "input-type": "phone", "init-value": "${data.phone_number}", "helper-text": "Active number — our agent may call to confirm your order" },
+          { "type": "TextArea",  "label": "Special Instructions (Optional)", "name": "additional_info","required": false, "max-length": 400,     "helper-text": "Gate colour, landmark, best time for delivery, access code..." },
+          {
+            "type": "Footer",
+            "label": "Review My Order →",
+            "on-click-action": {
+              "name": "data_exchange",
+              "payload": {
+                "service_type":     "GROCERY",
+                "item_list":        "${form.item_list}",
+                "budget":           "${form.budget}",
+                "preferred_store":  "${form.preferred_store}",
+                "customer_name":    "${form.customer_name}",
+                "delivery_address": "${form.delivery_address}",
+                "area":             "${form.area}",
+                "phone_number":     "${form.phone_number}",
+                "additional_info":  "${form.additional_info}"
+              }
+            }
+          }
+        ]
+      }
+    },
+
+    {
+      "id": "SCREEN_DETAILS_ERRAND",
+      "title": "Run an Errand",
+      "terminal": false,
+      "data": {
+        "service_type":     { "type": "string", "__example__": "ERRAND" },
+        "customer_name":    { "type": "string", "__example__": "" },
+        "delivery_address": { "type": "string", "__example__": "" },
+        "phone_number":     { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          { "type": "Image", "src": "https://errandsbuddy.com/assets/errand-banner.png", "height": 160, "scale-type": "cover" },
+          { "type": "TextHeading", "text": "📦 Errand Request" },
+          { "type": "TextBody", "text": "Need something picked up, dropped off, or handled? Describe your errand below and we'll assign a trusted agent to take care of it." },
+          { "type": "TextArea",  "label": "Describe Your Errand", "name": "item_list", "required": true, "max-length": 1000, "helper-text": "Be as detailed as possible. Include pickup location, destination, item descriptions, or any instructions" },
+          { "type": "TextInput", "label": "Your Budget (₦)",      "name": "budget",    "required": true, "input-type": "text", "helper-text": "How much are you budgeting for this errand?" },
+          { "type": "TextSubheading", "text": "📍 Your Details" },
+          { "type": "TextInput", "label": "Your Full Name", "name": "customer_name",    "required": true, "input-type": "text", "init-value": "${data.customer_name}",    "helper-text": "Enter your name so our agent can identify you" },
+          { "type": "TextInput", "label": "Your Address",   "name": "delivery_address", "required": true, "input-type": "text", "init-value": "${data.delivery_address}", "helper-text": "Your base address or pickup location" },
+          {
+            "type": "Dropdown",
+            "label": "Area (Abuja)",
+            "name": "area",
+            "required": true,
+            "data-source": [
+              { "id": "ASOKORO",      "title": "Asokoro"                    },
+              { "id": "MAITAMA",      "title": "Maitama"                    },
+              { "id": "WUSE",         "title": "Wuse"                       },
+              { "id": "WUSE_2",       "title": "Wuse 2"                     },
+              { "id": "GARKI",        "title": "Garki"                      },
+              { "id": "GARKI_2",      "title": "Garki 2"                    },
+              { "id": "GWARINPA",     "title": "Gwarinpa"                   },
+              { "id": "JABI",         "title": "Jabi"                       },
+              { "id": "UTAKO",        "title": "Utako"                      },
+              { "id": "KUBWA",        "title": "Kubwa"                      },
+              { "id": "LIFECAMP",     "title": "Life Camp"                  },
+              { "id": "KADO",         "title": "Kado"                       },
+              { "id": "DURUMI",       "title": "Durumi"                     },
+              { "id": "LUGBE",        "title": "Lugbe"                      },
+              { "id": "GALADIMAWA",   "title": "Galadimawa"                 },
+              { "id": "LOKOGOMA",     "title": "Lokogoma"                   },
+              { "id": "NBORA",        "title": "Nbora"                      },
+              { "id": "DAWAKI",       "title": "Dawaki"                     },
+              { "id": "KARMO",        "title": "Karmo"                      },
+              { "id": "KARU",         "title": "Karu"                       },
+              { "id": "NYANYA",       "title": "Nyanya"                     },
+              { "id": "MPAPE",        "title": "Mpape"                      },
+              { "id": "KATAMPE",      "title": "Katampe"                    },
+              { "id": "CENTRAL_AREA", "title": "Central Area"               },
+              { "id": "OTHER",        "title": "Other (specify in address)" }
+            ]
+          },
+          { "type": "TextInput", "label": "Phone Number",                "name": "phone_number",   "required": true,  "input-type": "phone", "init-value": "${data.phone_number}", "helper-text": "Our agent will contact you on this number" },
+          { "type": "TextArea",  "label": "Additional Notes (Optional)", "name": "additional_info","required": false, "max-length": 400,     "helper-text": "Preferred time, urgency level, any other info we should know..." },
+          {
+            "type": "Footer",
+            "label": "Review My Order →",
+            "on-click-action": {
+              "name": "data_exchange",
+              "payload": {
+                "service_type":     "ERRAND",
+                "item_list":        "${form.item_list}",
+                "budget":           "${form.budget}",
+                "preferred_store":  "",
+                "customer_name":    "${form.customer_name}",
+                "delivery_address": "${form.delivery_address}",
+                "area":             "${form.area}",
+                "phone_number":     "${form.phone_number}",
+                "additional_info":  "${form.additional_info}"
+              }
+            }
+          }
+        ]
+      }
+    },
+
+    {
+  "id": "SCREEN_DETAILS_CLEANING",
+  "title": "Book a Cleaner",
+  "terminal": false,
+  "data": {
+    "service_type":     { "type": "string", "__example__": "CLEANING" },
+    "customer_name":    { "type": "string", "__example__": "" },
+    "delivery_address": { "type": "string", "__example__": "" },
+    "phone_number":     { "type": "string", "__example__": "" }
+  },
+  "layout": {
+    "type": "SingleColumnLayout",
+    "children": [
+      { "type": "Image", "src": "https://errandsbuddy.com/assets/cleaning-banner.png", "height": 160, "scale-type": "cover" },
+      { "type": "TextHeading", "text": " Cleaning Service Booking" },
+      { "type": "TextBody", "text": "Our vetted cleaning professionals will leave your space spotless. Fill in the details below and we'll get back to you with availability." },
+
+      {
+        "type": "RadioButtonsGroup",
+        "label": "Type of Cleaning",
+        "name": "item_list",
+        "required": true,
+        "data-source": [
+          { "id": "Routine cleaning",   "title": "Routine Cleaning",   "description": "Regular upkeep — daily or weekly maintenance clean" },
+          { "id": "Deep cleaning",      "title": "Deep Cleaning",      "description": "Thorough top-to-bottom clean for every corner"       },
+          { "id": "Post-move cleaning", "title": "Post-Move Cleaning", "description": "Moving in or out? We'll make it fresh and ready"     },
+          { "id": "Office cleaning",    "title": "Office Cleaning",    "description": "Professional cleaning for commercial spaces"         }
+        ]
+      },
+
+      { "type": "TextInput", "label": "Number of Rooms",      "name": "budget",           "required": true,  "input-type": "text",  "helper-text": "Total rooms to be cleaned (include bathrooms & kitchen)" },
+      { "type": "TextInput", "label": "Preferred Date & Time","name": "preferred_store",  "required": true,  "input-type": "text",  "helper-text": "E.g. Monday 23rd June, 9am — or ASAP" },
+
+      { "type": "TextSubheading", "text": "📍 Location Details" },
+      { "type": "TextInput", "label": "Your Full Name",     "name": "customer_name",    "required": true, "input-type": "text", "init-value": "${data.customer_name}",    "helper-text": "Name of the person to expect our cleaner"   },
+      { "type": "TextInput", "label": "Property Address",   "name": "delivery_address", "required": true, "input-type": "text", "init-value": "${data.delivery_address}", "helper-text": "Full address of the property to be cleaned" },
+      {
+        "type": "Dropdown",
+        "label": "Area (Abuja)",
+        "name": "area",
+        "required": true,
+        "data-source": [
+          { "id": "ASOKORO",      "title": "Asokoro"                    },
+          { "id": "MAITAMA",      "title": "Maitama"                    },
+          { "id": "WUSE",         "title": "Wuse"                       },
+          { "id": "WUSE_2",       "title": "Wuse 2"                     },
+          { "id": "GARKI",        "title": "Garki"                      },
+          { "id": "GARKI_2",      "title": "Garki 2"                    },
+          { "id": "GWARINPA",     "title": "Gwarinpa"                   },
+          { "id": "JABI",         "title": "Jabi"                       },
+          { "id": "UTAKO",        "title": "Utako"                      },
+          { "id": "KUBWA",        "title": "Kubwa"                      },
+          { "id": "LIFECAMP",     "title": "Life Camp"                  },
+          { "id": "KADO",         "title": "Kado"                       },
+          { "id": "DURUMI",       "title": "Durumi"                     },
+          { "id": "LUGBE",        "title": "Lugbe"                      },
+          { "id": "GALADIMAWA",   "title": "Galadimawa"                 },
+          { "id": "LOKOGOMA",     "title": "Lokogoma"                   },
+          { "id": "NBORA",        "title": "Nbora"                      },
+          { "id": "DAWAKI",       "title": "Dawaki"                     },
+          { "id": "KARMO",        "title": "Karmo"                      },
+          { "id": "KARU",         "title": "Karu"                       },
+          { "id": "NYANYA",       "title": "Nyanya"                     },
+          { "id": "MPAPE",        "title": "Mpape"                      },
+          { "id": "KATAMPE",      "title": "Katampe"                    },
+          { "id": "CENTRAL_AREA", "title": "Central Area"               },
+          { "id": "OTHER",        "title": "Other (specify in address)" }
+        ]
+      },
+      { "type": "TextInput", "label": "Phone Number", "name": "phone_number", "required": true, "input-type": "phone", "init-value": "${data.phone_number}", "helper-text": "We'll confirm your booking on this number" },
+      { "type": "TextArea",  "label": "Special Instructions (Optional)", "name": "additional_info", "required": false, "max-length": 400, "helper-text": "Pets at home, specific focus areas, gate/access info, allergies to cleaning products..." },
+
+      {
+        "type": "Footer",
+        "label": "Review My Booking →",
+        "on-click-action": {
+          "name": "data_exchange",
+          "payload": {
+            "service_type":     "CLEANING",
+            "item_list":        "${form.item_list}",
+            "budget":           "${form.budget}",
+            "preferred_store":  "${form.preferred_store}",
+            "customer_name":    "${form.customer_name}",
+            "delivery_address": "${form.delivery_address}",
+            "area":             "${form.area}",
+            "phone_number":     "${form.phone_number}",
+            "additional_info":  "${form.additional_info}"
+          }
+        }
+      }
+    ]
+  }
+},
+
+    {
+      "id": "SCREEN_SUMMARY",
+      "title": "Review & Submit",
+      "terminal": true,
+      "data": {
+        "service_type":     { "type": "string", "__example__": "GROCERY" },
+        "item_list":        { "type": "string", "__example__": "Rice and Beans 1paint" },
+        "budget":           { "type": "string", "__example__": "2000" },
+        "preferred_store":  { "type": "string", "__example__": "Wuse Market" },
+        "customer_name":    { "type": "string", "__example__": "Tunde Adeyemi" },
+        "delivery_address": { "type": "string", "__example__": "12 Adeola Odeku, Wuse 2" },
+        "area":             { "type": "string", "__example__": "WUSE_2" },
+        "phone_number":     { "type": "string", "__example__": "08012345678" },
+        "additional_info":  { "type": "string", "__example__": "Blue gate" },
+        "summary_table":    { "type": "string", "__example__": "## Review your request\n\n| Field | Details |\n| --- | --- |\n| Service | Grocery Shopping |" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "RichText",
+            "text": "${data.summary_table}"
+          },
+          {
+            "type": "Footer",
+            "label": "Confirm & Submit",
+            "on-click-action": {
+              "name": "complete",
+              "payload": {
+                "service_type":     "${data.service_type}",
+                "item_list":        "${data.item_list}",
+                "budget":           "${data.budget}",
+                "preferred_store":  "${data.preferred_store}",
+                "customer_name":    "${data.customer_name}",
+                "delivery_address": "${data.delivery_address}",
+                "area":             "${data.area}",
+                "phone_number":     "${data.phone_number}",
+                "additional_info":  "${data.additional_info}"
+              }
+            }
+          }
+        ]
+      }
+    }
+
+  ]
+}
