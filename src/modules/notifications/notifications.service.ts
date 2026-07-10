@@ -53,7 +53,9 @@ export class NotificationsService {
       const areaLabel = (order.flowData as any)?.areaLabel ?? null;
       const serviceLabel = (order.flowData as any)?.serviceLabel ?? order.serviceType;
 
-      await this.emailService.sendNewOrderAlert({
+      // ✅ sendNewOrderAlert now returns true/false — only log success
+      // if the email actually went out, instead of assuming it did.
+      const sent = await this.emailService.sendNewOrderAlert({
         adminEmails,
         orderNumber: order.orderNumber,
         customerName: order.customer.name,
@@ -66,7 +68,13 @@ export class NotificationsService {
         crmUrl,
       });
 
-      this.logger.log(`[NOTIFY] New order email sent for ${order.orderNumber}`);
+      if (sent) {
+        this.logger.log(`[NOTIFY] New order email sent for ${order.orderNumber}`);
+      } else {
+        this.logger.warn(
+          `[NOTIFY] New order email FAILED for ${order.orderNumber} — see EmailService logs above for the reason`,
+        );
+      }
     } catch (err: any) {
       this.logger.error(`[NOTIFY] onOrderCreated email failed: ${err.message}`);
     }
@@ -220,49 +228,49 @@ export class NotificationsService {
   // ORDER_ASSIGNED → "Your buddy X is assigned"
   // ----------------------------------------------------------------
   @OnEvent(EVENTS.ORDER_ASSIGNED)
-async onOrderAssigned(payload: { order: any; buddyId: string }): Promise<void> {
-  try {
-    const order = await this.prisma.order.findUnique({
-      where: { id: payload.order.id },
-      include: {
-        customer: { select: { phone: true, name: true } },
-        buddy: { select: { name: true } },
-        business: {
-          select: {
-            whatsappToken: true,
-            estimatedDeliveryMin: true,
-            estimatedDeliveryMax: true,
-            estimatedDeliveryUnit: true,
+  async onOrderAssigned(payload: { order: any; buddyId: string }): Promise<void> {
+    try {
+      const order = await this.prisma.order.findUnique({
+        where: { id: payload.order.id },
+        include: {
+          customer: { select: { phone: true, name: true } },
+          buddy: { select: { name: true } },
+          business: {
+            select: {
+              whatsappToken: true,
+              estimatedDeliveryMin: true,
+              estimatedDeliveryMax: true,
+              estimatedDeliveryUnit: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    if (!order?.buddy) return;
+      if (!order?.buddy) return;
 
-    this.tenantContext.set(payload.order.businessId, false);
+      this.tenantContext.set(payload.order.businessId, false);
 
-    const unitLabel = order.business.estimatedDeliveryUnit === 'hours' ? 'hrs' : 'mins';
-    const eta = `${order.business.estimatedDeliveryMin ?? 30}–${order.business.estimatedDeliveryMax ?? 60} ${unitLabel}`;
+      const unitLabel = order.business.estimatedDeliveryUnit === 'hours' ? 'hrs' : 'mins';
+      const eta = `${order.business.estimatedDeliveryMin ?? 30}–${order.business.estimatedDeliveryMax ?? 60} ${unitLabel}`;
 
-    const { body } = Templates.buddyAssigned({
-      orderNumber: order.orderNumber,
-      buddyName: order.buddy.name,
-      eta,
-      serviceType: order.serviceType,
-    });
+      const { body } = Templates.buddyAssigned({
+        orderNumber: order.orderNumber,
+        buddyName: order.buddy.name,
+        eta,
+        serviceType: order.serviceType,
+      });
 
-    await this.whatsappService.sendText({
-      to: order.customer.phone,
-      message: body,
-      ...(order.business.whatsappToken && { token: order.business.whatsappToken }),
-    });
+      await this.whatsappService.sendText({
+        to: order.customer.phone,
+        message: body,
+        ...(order.business.whatsappToken && { token: order.business.whatsappToken }),
+      });
 
-    this.logger.log(`[NOTIFY] order.assigned → ${order.orderNumber}`);
-  } catch (err) {
-    this.logger.error(`[NOTIFY] order.assigned failed: ${err}`);
+      this.logger.log(`[NOTIFY] order.assigned → ${order.orderNumber}`);
+    } catch (err) {
+      this.logger.error(`[NOTIFY] order.assigned failed: ${err}`);
+    }
   }
-}
 
   // ----------------------------------------------------------------
   // ORDER_IN_TRANSIT → "Buddy is on the way"
@@ -331,6 +339,47 @@ async onOrderAssigned(payload: { order: any; buddyId: string }): Promise<void> {
       this.logger.log(`[NOTIFY] order.delivered → ${order.orderNumber}`);
     } catch (err) {
       this.logger.error(`[NOTIFY] order.delivered failed: ${err}`);
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // PAYMENT_REJECTED → tell customer their proof was rejected,
+  // ask them to resend a clearer screenshot
+  // ----------------------------------------------------------------
+  @OnEvent(EVENTS.PAYMENT_REJECTED)
+  async onPaymentRejected(payload: { payment: any; reason?: string }): Promise<void> {
+    try {
+      const payment = await this.prisma.payment.findUnique({
+        where: { id: payload.payment.id },
+        include: {
+          customer: { select: { phone: true } },
+          order: { select: { orderNumber: true, businessId: true } },
+        },
+      });
+
+      if (!payment) return;
+
+      this.tenantContext.set(payment.order.businessId, false);
+
+      const business = await this.prisma.business.findUnique({
+        where: { id: payment.order.businessId },
+        select: { whatsappToken: true },
+      });
+
+      const reasonLine = payload.reason ? `\n\nReason: ${payload.reason}` : '';
+      const message =
+        `We could not verify your payment proof for order ${payment.order.orderNumber}. 😕${reasonLine}\n\n` +
+        `Please send a clearer screenshot of your bank transfer, showing the amount, date, and reference.`;
+
+      await this.whatsappService.sendText({
+        to: payment.customer.phone,
+        message,
+        ...(business?.whatsappToken && { token: business.whatsappToken }),
+      });
+
+      this.logger.log(`[NOTIFY] payment.rejected → order ${payment.order.orderNumber}`);
+    } catch (err: any) {
+      this.logger.error(`[NOTIFY] onPaymentRejected failed: ${err.message}`);
     }
   }
 

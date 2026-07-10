@@ -70,6 +70,59 @@ export class OrdersRepository {
     });
   }
 
+  // ----------------------------------------------------------------
+// findInbox — ONE ROW PER CUSTOMER, showing their most recent order.
+// Uses Postgres DISTINCT ON semantics via Prisma's `distinct` option:
+// distinct: ['customerId'] + orderBy starting with customerId gives
+// exactly one row per customer — the latest one, because we order
+// by createdAt desc within each customer group.
+// ----------------------------------------------------------------
+async findInbox(input: ListOrdersInput): Promise<PaginatedOrders> {
+  const businessId = this.tenant.get();
+  const { page, limit, status, serviceType, search } = input;
+
+  const where: Prisma.OrderWhereInput = {
+    businessId,
+    ...(status && { status }),
+    ...(serviceType && { serviceType }),
+    ...(search && { orderNumber: { contains: search, mode: 'insensitive' } }),
+  };
+
+  // Step 1: pull the latest order per customer.
+  // NOTE: distinct requires customerId to be the FIRST orderBy key for
+  // Postgres to correctly pick the "first row" (i.e. most recent) per
+  // customer — this is Prisma's equivalent of `DISTINCT ON (customerId)`.
+  const latestPerCustomer = await this.prisma.order.findMany({
+    where,
+    distinct: ['customerId'],
+    orderBy: [{ customerId: 'asc' }, { createdAt: 'desc' }],
+    include: {
+      ...ORDER_INCLUDE,
+      customer: { select: { id: true, phone: true, name: true, totalOrders: true } },
+    },
+  });
+
+  // Step 2: re-sort by createdAt desc (distinct's orderBy above was
+  // needed for correctness, not final display order) then paginate
+  // in memory — this list is one-row-per-customer, not one-row-per-order,
+  // so it can't be paginated at the DB level with a simple skip/take
+  // on the orders table itself.
+  const sorted = latestPerCustomer.sort(
+    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  );
+
+  const total = sorted.length;
+  const skip = (page - 1) * limit;
+  const paged = sorted.slice(skip, skip + limit);
+
+  return {
+    data: paged.map(this.mapOrder),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
+}
   async updateStatus(
     id: string,
     status: OrderStatus,

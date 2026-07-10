@@ -1,24 +1,5 @@
-import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Min, Max } from 'class-validator';
+// src/modules/reviews/dto/reviews.dto.ts
+import { createZodDto } from 'nestjs-zod'; // adjust import if you use a different zod-dto bridge
+import { ListReviewsSchema } from '@modules/reviews/schemas/reviews.schema';
 
-export class ListReviewsDto {
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  page: number = 1;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  @IsOptional()
-  limit: number = 20;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(5)
-  @IsOptional()
-  rating?: number;
-}
+export class ListReviewsDto extends createZodDto(ListReviewsSchema) {}

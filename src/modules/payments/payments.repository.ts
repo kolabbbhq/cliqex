@@ -40,6 +40,18 @@ export class PaymentsRepository {
     });
   }
 
+  async reject(id: string, adminId: string, reason?: string): Promise<Payment> {
+    return this.prisma.payment.update({
+      where: { id },
+      data: {
+        status:          PaymentStatus.REJECTED,
+        rejectedBy:      adminId,
+        rejectedAt:      new Date(),
+        rejectionReason: reason ?? null,
+      },
+    });
+  }
+
  async findAll(input: ListPaymentsInput): Promise<PaginatedPayments> {
   const businessId = this.tenant.get();
   const { page, limit } = input;

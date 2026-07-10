@@ -16,8 +16,9 @@ import { JwtGuard } from '@modules/auth/guards/auth.guards';
 import { Public } from '@common/decorators/public.decorator';
 import { PaymentsService } from './payments.service';
 import {
-  ConfirmBankTransferInput,
-  ListPaymentsInput,
+  ListPaymentsDto,
+  ConfirmBankTransferDto,
+  RejectBankTransferDto,
 } from './schemas/payments.schema';
 
 @Controller('payments')
@@ -42,19 +43,36 @@ export class PaymentsController {
   }
 
   @UseGuards(JwtGuard)
-  @Post(':orderId/bank-transfer/confirm')
+  @Post('order/:orderId/confirm-transfer')
   async confirmBankTransfer(
     @Param('orderId') orderId: string,
     @Req() req: Request & { user: { id: string } },
-    @Body() input: ConfirmBankTransferInput,
+    @Body() input: ConfirmBankTransferDto,
   ) {
     await this.paymentsService.confirmBankTransfer(orderId, req.user.id, input);
     return { message: 'Bank transfer confirmed' };
   }
 
   @UseGuards(JwtGuard)
+  @Post('order/:orderId/reject-transfer')
+  async rejectBankTransfer(
+    @Param('orderId') orderId: string,
+    @Req() req: Request & { user: { id: string } },
+    @Body() input: RejectBankTransferDto,
+  ) {
+    await this.paymentsService.rejectBankTransfer(orderId, req.user.id, input);
+    return { message: 'Bank transfer rejected' };
+  }
+
+  @UseGuards(JwtGuard)
+  @Get('order/:orderId/preview')
+  async previewBankTransfer(@Param('orderId') orderId: string) {
+    return this.paymentsService.previewBankTransfer(orderId);
+  }
+
+  @UseGuards(JwtGuard)
   @Get()
-  async findAll(@Query() query: ListPaymentsInput) {
+  async findAll(@Query() query: ListPaymentsDto) {
     return this.paymentsService.findAll(query);
   }
 

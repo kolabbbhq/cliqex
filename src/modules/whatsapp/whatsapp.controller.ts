@@ -151,6 +151,15 @@ const isValid = crypto.timingSafeEqual(sigBuf, expectedBuf);
     return this.whatsappService.getOrderThread(orderId);
   }
 
+  // whatsapp.controller.ts
+
+@UseGuards(JwtGuard)
+@Get('thread/customer/:customerId')
+@ApiBearerAuth()
+@ApiOperation({ summary: 'Get full WhatsApp conversation thread for a customer, across all their orders' })
+async getCustomerThread(@Param('customerId') customerId: string) {
+  return this.whatsappService.getThreadByCustomer(customerId);
+}
   // ----------------------------------------------------------------
   // POST /api/v1/whatsapp/thread/:orderId/reply
   // Protected — admin sends a manual WhatsApp reply

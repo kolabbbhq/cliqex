@@ -33,21 +33,37 @@ export class EmailService {
   private readonly transporter: Transporter;
 
   constructor(private readonly config: ConfigService) {
-   this.transporter = nodemailer.createTransport({
-  host: this.config.get<string>('SMTP_HOST', 'smtp.gmail.com'),
-  port: this.config.get<number>('SMTP_PORT', 587),
-  secure: false,
-  auth: {
-    user: this.config.get<string>('SMTP_USER'),
-    pass: this.config.get<string>('SMTP_PASS'),
-  },
-} as any);
+    // ✅ Env vars are ALWAYS strings — ConfigService.get<number>() only
+    // casts the TypeScript type, it does NOT convert the runtime value.
+    // "465" === 465 is false in JS, which silently broke `secure` before.
+    const port = Number(this.config.get<string>('SMTP_PORT', '465'));
+    const user = this.config.get<string>('SMTP_USER');
+    const pass = this.config.get<string>('SMTP_PASS');
+
+    this.logger.log(
+      `[EMAIL] Initializing transporter — host=${this.config.get<string>('SMTP_HOST', 'smtp.gmail.com')}, port=${port}, user=${user}, passLength=${pass?.length ?? 0}`,
+    );
+
+    if (!user || !pass) {
+      this.logger.error(
+        '[EMAIL] SMTP_USER or SMTP_PASS is missing — outgoing email will fail. Check your .env.',
+      );
+    }
+
+    this.transporter = nodemailer.createTransport({
+      host: this.config.get<string>('SMTP_HOST', 'smtp.gmail.com'),
+      port,
+      secure: port === 465, // true for 465 (implicit TLS), false for 587 (STARTTLS)
+      auth: { user, pass },
+    } as any);
   }
 
   // ----------------------------------------------------------------
   // sendPaymentProofAlert
+  // Returns true/false so callers (e.g. NotificationsService) know
+  // whether the send actually succeeded, instead of assuming success.
   // ----------------------------------------------------------------
-  async sendPaymentProofAlert(params: PaymentProofAlertParams): Promise<void> {
+  async sendPaymentProofAlert(params: PaymentProofAlertParams): Promise<boolean> {
     const {
       adminEmails,
       orderNumber,
@@ -61,7 +77,7 @@ export class EmailService {
 
     if (!adminEmails.length) {
       this.logger.warn(`[EMAIL] No admin emails for order ${orderNumber} — skipping`);
-      return;
+      return false;
     }
 
     const formattedAmount = `₦${amount.toLocaleString('en-NG', {
@@ -144,15 +160,18 @@ export class EmailService {
       this.logger.log(
         `[EMAIL] Payment proof alert sent for order ${orderNumber} → ${adminEmails.join(', ')}`,
       );
+      return true;
     } catch (err: any) {
       this.logger.error(`[EMAIL] Failed to send payment proof alert: ${err.message}`);
+      return false;
     }
   }
 
   // ----------------------------------------------------------------
   // sendNewOrderAlert
+  // Returns true/false — same reasoning as above.
   // ----------------------------------------------------------------
-  async sendNewOrderAlert(params: NewOrderAlertParams): Promise<void> {
+  async sendNewOrderAlert(params: NewOrderAlertParams): Promise<boolean> {
     const {
       adminEmails,
       orderNumber,
@@ -166,7 +185,7 @@ export class EmailService {
       crmUrl,
     } = params;
 
-    if (!adminEmails.length) return;
+    if (!adminEmails.length) return false;
 
     const displayItems = items.slice(0, 5);
     const remaining = items.length - 5;
@@ -262,8 +281,10 @@ export class EmailService {
       this.logger.log(
         `[EMAIL] New order alert sent for ${orderNumber} → ${adminEmails.join(', ')}`,
       );
+      return true;
     } catch (err: any) {
       this.logger.error(`[EMAIL] Failed to send new order alert: ${err.message}`);
+      return false;
     }
   }
 }

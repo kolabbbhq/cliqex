@@ -53,4 +53,16 @@ export class WhatsappRepository {
       take:    100,
     });
   }
+async getThreadByCustomer(customerId: string, limit = 200) {
+  const businessId = this.tenant.get();
+
+  return this.prisma.message.findMany({
+    where: { customerId, businessId },
+    orderBy: { createdAt: 'desc' }, // newest first, then reverse in service/frontend for display
+    take: limit,
+    include: {
+      order: { select: { id: true, orderNumber: true, status: true } },
+    },
+  });
+}
 }

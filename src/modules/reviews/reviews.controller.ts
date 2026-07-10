@@ -1,27 +1,27 @@
-import { Controller, Get, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-
-import { ReviewsService } from './reviews.service';
+// src/modules/reviews/reviews.controller.ts
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { JwtGuard } from '@modules/auth/guards/auth.guards';
+import { RolesGuard } from '@modules/auth/guards/roles.guard';
+import { ReviewsService } from '@modules/reviews/reviews.service';
 import { ListReviewsDto } from './dto/reviews.dto';
-@ApiTags('Reviews')
-@ApiBearerAuth()
-@UseGuards(JwtGuard)
+
+@UseGuards(JwtGuard, RolesGuard)
 @Controller('reviews')
 export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
 
-  // GET /api/v1/reviews?rating=5&page=1&limit=20
   @Get()
-  @ApiOperation({ summary: 'List reviews — paginated, optional rating filter' })
-  async findAll(@Query() query: ListReviewsDto) {
+  findAll(@Query() query: ListReviewsDto) {
     return this.reviewsService.findAll(query);
   }
 
-  // GET /api/v1/reviews/summary
-  @Get('summary')
-  @ApiOperation({ summary: 'Review summary stats — average, total, breakdown' })
-  async getSummary() {
-    return this.reviewsService.getSummary();
+  @Get('stats')
+  getStats(@Query('buddyId') buddyId?: string) {
+    return this.reviewsService.getStats(buddyId);
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.reviewsService.findOne(id);
   }
 }

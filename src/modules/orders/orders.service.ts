@@ -54,6 +54,10 @@ export class OrdersService {
     return this.ordersRepository.findAll(input);
   }
 
+  async findInbox(input: ListOrdersInput): Promise<PaginatedOrders> {
+  return this.ordersRepository.findInbox(input);
+}
+
   // ----------------------------------------------------------------
   // Admin prices all items + sets delivery fee → sends quote
   // ----------------------------------------------------------------

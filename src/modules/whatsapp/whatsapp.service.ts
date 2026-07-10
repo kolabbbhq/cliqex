@@ -292,67 +292,89 @@ if (msg.type === 'text' && msg.text) {
   // to the customer, and emails all active admins.
   // ----------------------------------------------------------------
   private async handlePaymentProofReceived(
-    phone: string,
-    orderId: string,
-    mediaUrl: string,
-    token: string,
-    businessId: string,
-  ): Promise<void> {
-    this.logger.log(`[PAYMENT_PROOF] Received from ${phone} for order ${orderId}`);
+  phone: string,
+  orderId: string,
+  mediaUrl: string,
+  token: string,
+  businessId: string,
+): Promise<void> {
+  this.logger.log(`[PAYMENT_PROOF] Received from ${phone} for order ${orderId}`);
 
-    try {
-      const order = await this.ordersService.findOne(orderId);
+  try {
+    const order = await this.ordersService.findOne(orderId);
 
-      const existing = await this.prisma.payment.findFirst({ where: { orderId } });
+    const existing = await this.prisma.payment.findFirst({ where: { orderId } });
 
-      if (existing) {
-        await this.prisma.payment.update({
-          where: { id: existing.id },
-          data: { proofUrl: mediaUrl },
-        });
-        this.logger.log(`[PAYMENT_PROOF] Updated proofUrl on payment ${existing.id}`);
-      } else {
-        await this.prisma.payment.create({
-          data: {
-            businessId,
-            orderId,
-            customerId: order.customerId,
-            method: 'BANK_TRANSFER',
-            status: 'PENDING',
-            amount: order.total,
-            proofUrl: mediaUrl,
-          },
-        });
-        this.logger.log(`[PAYMENT_PROOF] Created new PENDING payment for order ${orderId}`);
-      }
-
-      // ── Auto-reply to customer ─────────────────────────────────
-      const proofTemplate = Templates.paymentProofReceived();
-      await this.sendText({ to: phone, message: proofTemplate.body, token });
-
-      // ── Email all active admins ────────────────────────────────
-      const admins = await this.prisma.admin.findMany({
-        where: { businessId, isActive: true },
-        select: { email: true },
+    if (existing) {
+      await this.prisma.payment.update({
+        where: { id: existing.id },
+        data: { proofUrl: mediaUrl },
       });
-      const adminEmails = admins.map((a) => a.email);
-      const business = await this.businessService.getById(businessId);
-
-      await this.emailService.sendPaymentProofAlert({
-        adminEmails,
-        orderNumber: order.orderNumber,
-        customerName: order.customer.name,
-        customerPhone: order.customer.phone,
-        amount: order.total,
-        serviceType: (order.flowData as any)?.serviceLabel ?? order.serviceType,
-        proofUrl: mediaUrl,
-        businessName: business.name,
+      this.logger.log(`[PAYMENT_PROOF] Updated proofUrl on payment ${existing.id}`);
+    } else {
+      await this.prisma.payment.create({
+        data: {
+          businessId,
+          orderId,
+          customerId: order.customerId,
+          method: 'BANK_TRANSFER',
+          status: 'PENDING',
+          amount: order.total,
+          proofUrl: mediaUrl,
+        },
       });
-    } catch (err: any) {
-      this.logger.error(`[PAYMENT_PROOF] Handler failed: ${err.message}`);
+      this.logger.log(`[PAYMENT_PROOF] Created new PENDING payment for order ${orderId}`);
     }
-  }
 
+    // ── Auto-reply to customer ─────────────────────────────────
+    const proofTemplate = Templates.paymentProofReceived();
+    await this.sendText({ to: phone, message: proofTemplate.body, token });
+
+    // ── Email all active admins ────────────────────────────────
+    const admins = await this.prisma.admin.findMany({
+      where: { businessId, isActive: true },
+      select: { email: true },
+    });
+    const adminEmails = admins.map((a) => a.email);
+
+    if (!adminEmails.length) {
+      this.logger.warn(
+        `[PAYMENT_PROOF] No active admins with email for business ${businessId} — skipping alert`,
+      );
+      return;
+    }
+
+    const business = await this.businessService.getById(businessId);
+
+    // ✅ Number(order.total) — order.total is a Prisma Decimal, not a
+    // plain number. Passing it straight through silently breaks
+    // amount.toLocaleString() inside EmailService.
+    const sent = await this.emailService.sendPaymentProofAlert({
+      adminEmails,
+      orderNumber: order.orderNumber,
+      customerName: order.customer.name,
+      customerPhone: order.customer.phone,
+      amount: Number(order.total),
+      serviceType: (order.flowData as any)?.serviceLabel ?? order.serviceType,
+      proofUrl: mediaUrl,
+      businessName: business.name,
+    });
+
+    if (sent) {
+      this.logger.log(`[PAYMENT_PROOF] Admin alert email sent for order ${order.orderNumber}`);
+    } else {
+      this.logger.warn(
+        `[PAYMENT_PROOF] Admin alert email FAILED for order ${order.orderNumber} — see EmailService logs above`,
+      );
+    }
+  } catch (err: any) {
+    this.logger.error(`[PAYMENT_PROOF] Handler failed: ${err.message}`);
+  }
+}
+
+async getThreadByCustomer(customerId: string) {
+  return this.whatsappRepository.getThreadByCustomer(customerId);
+}
   // ----------------------------------------------------------------
   // sendGreeting
   // ----------------------------------------------------------------

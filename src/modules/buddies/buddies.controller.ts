@@ -24,7 +24,7 @@ import { JwtGuard } from '@modules/auth/guards/auth.guards';
 import { RolesGuard } from '@modules/auth/guards/roles.guard';
 import { BuddiesService } from '@modules/buddies/buddies.service';
 
-@UseGuards(JwtGuard,)
+@UseGuards(JwtGuard, RolesGuard)
 @Controller('buddies')
 export class BuddiesController {
   constructor(private readonly buddiesService: BuddiesService) {}
@@ -44,17 +44,17 @@ export class BuddiesController {
     return this.buddiesService.findOne(id);
   }
 
-  @Post()
-  @Roles(AdminRole.SUPER_ADMIN)
-  async create(@Body() dto: CreateBuddyDto) {
-    return this.buddiesService.create(dto);
-  }
+ @Post()
+@Roles(AdminRole.SUPER_ADMIN, AdminRole.BUSINESS_OWNER)
+async create(@Body() dto: CreateBuddyDto) {
+  return this.buddiesService.create(dto);
+}
 
-  @Patch(':id')
-  @Roles(AdminRole.SUPER_ADMIN)
-  async update(@Param('id') id: string, @Body() dto: UpdateBuddyDto) {
-    return this.buddiesService.update(id, dto);
-  }
+ @Patch(':id')
+@Roles(AdminRole.SUPER_ADMIN, AdminRole.BUSINESS_OWNER)
+async update(@Param('id') id: string, @Body() dto: UpdateBuddyDto) {
+  return this.buddiesService.update(id, dto);
+}
 
   @Patch(':id/status')
   @HttpCode(HttpStatus.OK)

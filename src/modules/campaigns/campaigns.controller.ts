@@ -34,16 +34,16 @@ export class CampaignsController {
     return this.campaignsService.previewAudience(audience);
   }
 
-  @Post()
-  @Roles(AdminRole.SUPER_ADMIN)
-  async create(@Body() dto: CreateCampaignDto, @CurrentAdmin() admin: AuthenticatedAdmin) {
-    return this.campaignsService.create(dto, admin.id);
-  }
+ @Post()
+@Roles(AdminRole.SUPER_ADMIN, AdminRole.BUSINESS_OWNER)
+async create(@Body() dto: CreateCampaignDto, @CurrentAdmin() admin: AuthenticatedAdmin) {
+  return this.campaignsService.create(dto, admin.id);
+}
 
-  @Post(':id/send')
-  @HttpCode(HttpStatus.OK)
-  @Roles(AdminRole.SUPER_ADMIN)
-  async send(@Param('id') id: string) {
-    return this.campaignsService.send(id);
-  }
+@Post(':id/send')
+@HttpCode(HttpStatus.OK)
+@Roles(AdminRole.SUPER_ADMIN, AdminRole.BUSINESS_OWNER)
+async send(@Param('id') id: string) {
+  return this.campaignsService.send(id);
+}
 }

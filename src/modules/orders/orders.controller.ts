@@ -41,6 +41,11 @@ export class OrdersController {
   async findAll(@Query() query: ListOrdersDto) {
     return this.ordersService.findAll(query);
   }
+  @Get('inbox')
+@ApiOperation({ summary: 'List orders grouped by customer — one row per customer, latest order' })
+async findInbox(@Query() query: ListOrdersDto) {
+  return this.ordersService.findInbox(query);
+}
 
   // GET /api/v1/orders/:id
   @Get(':id')

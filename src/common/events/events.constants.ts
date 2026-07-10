@@ -20,6 +20,7 @@ export const EVENTS = {
 
   // Payments
   PAYMENT_CONFIRMED: 'payment.confirmed',
+  PAYMENT_REJECTED: 'payment.rejected',
   PAYMENT_FAILED: 'payment.failed',
 
   // AI processing

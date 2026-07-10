@@ -39,6 +39,7 @@ enum PaymentStatus {
   CONFIRMED
   FAILED
   REFUNDED
+  REJECTED
 }
 
 enum MessageDirection {
@@ -368,6 +369,9 @@ model Payment {
   proofUrl     String?
   confirmedBy  String?
   confirmedAt  DateTime?
+    rejectedBy      String?
+  rejectedAt      DateTime?
+  rejectionReason String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
