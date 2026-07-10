@@ -25,3 +25,4 @@ Thumbs.db
 # Keys — NEVER commit these
 *.pem
 *.b64tsconfig.build.tsbuildinfo
+*.tsbuildinfo
