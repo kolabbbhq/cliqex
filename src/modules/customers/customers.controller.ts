@@ -26,7 +26,8 @@ export class CustomersController {
   async findAll(@Query() query: ListCustomersDto) {
     return this.customersService.findAll(query);
   }
-
+  
+//
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.customersService.findOne(id);

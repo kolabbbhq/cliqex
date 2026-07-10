@@ -221,7 +221,8 @@ async send(campaignId: string): Promise<{ sent: number; recipients: number }> {
   return customers;
 }
 
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
+  // private delay(ms: number): Promise<void> {
+  //   return new Promise((resolve) => setTimeout(resolve, ms));
+  // }
+  private delay
 }
