@@ -15,6 +15,10 @@ export class BusinessController {
   getMyBusiness() {
     return this.businessService.getMyBusiness();
   }
+  @Get('me/messages')
+getMessageTemplates() {
+  return this.businessService.getMessageTemplates();
+}
 
 @Patch('me')
 updateMyBusiness(

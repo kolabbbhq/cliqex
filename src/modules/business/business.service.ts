@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import { UpdateOperatingHoursSchema } from './Schemas/business-hours.schema';
 import { UpdateMessageTemplatesSchema } from './Schemas/message-templates.schema';
 import { UpdateDeliveryEstimatesSchema } from './Schemas/delivery-estimates.schema';
+import { Templates } from '@modules/whatsapp/templates/messages.template';
 
 @Injectable()
 export class BusinessService {
@@ -126,6 +127,35 @@ async getMyBusiness(): Promise<BusinessWithConfig & { webhookUrl: string }> {
   }
 
   return updated;
+}
+
+async getMessageTemplates(): Promise<{
+  greeting: string;
+  orderReceived: string;
+  closedMessage: string;
+  quoteFooter: string;
+}> {
+  const businessId = this.tenant.get();
+  const business = await this.businessRepo.findById(businessId);
+  if (!business) throw new NotFoundException('Business not found');
+
+  const overrides = (business as any).messageTemplates ?? {};
+
+  return {
+    // No default exists here for real — first-time customers get the
+    // WhatsApp Flow card or menu CTA, not standalone text. Genuinely blank.
+    greeting: overrides.greeting ?? '',
+
+    // Pulls the live default straight from Templates.ts — never duplicated,
+    // never goes stale if the wording changes there.
+    orderReceived:
+      overrides.orderReceived ?? Templates.flowOrderReceived('{orderNumber}').body,
+
+    closedMessage:
+      overrides.closedMessage ?? Templates.closedMessage('{nextOpen}').body,
+
+    quoteFooter: overrides.quoteFooter ?? '',
+  };
 }
 
 async updateMessageTemplates(data: unknown): Promise<Business> {
