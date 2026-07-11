@@ -8,6 +8,7 @@ import {
 import { Business, ServiceConfig } from '@prisma/client';
 import { TenantContext } from '@common/tenant/tenant-context.service';
 import { BusinessRepository, BusinessWithConfig } from '@modules/business/business.repository';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class BusinessService {
@@ -18,6 +19,8 @@ export class BusinessService {
   constructor(
     private readonly businessRepo: BusinessRepository,
     private readonly tenant: TenantContext,
+      private readonly config: ConfigService,   
+
   ) {}
 
   async resolveByPhoneId(phoneId: string): Promise<Business | null> {
@@ -35,14 +38,19 @@ export class BusinessService {
     return business;
   }
 
-  async getMyBusiness(): Promise<BusinessWithConfig> {
-    const businessId = this.tenant.get();
-    const business = await this.businessRepo.findById(businessId);
+async getMyBusiness(): Promise<BusinessWithConfig & { webhookUrl: string }> {
+  const businessId = this.tenant.get();
+  const business = await this.businessRepo.findById(businessId);
 
-    if (!business) throw new NotFoundException('Business not found');
+  if (!business) throw new NotFoundException('Business not found');
 
-    return business;
-  }
+  const baseUrl = this.config.get<string>('PUBLIC_BASE_URL', 'https://cliqex-production.up.railway.app');
+
+  return {
+    ...business,
+    webhookUrl: `${baseUrl}/api/v1/whatsapp/webhook`,
+  };
+}
 
   async getById(id: string): Promise<BusinessWithConfig> {
     const business = await this.businessRepo.findById(id);
