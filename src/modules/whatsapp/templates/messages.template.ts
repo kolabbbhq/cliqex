@@ -5,7 +5,7 @@
 
 export const Templates = {
   // ----------------------------------------------------------------
-  // greeting
+  // greeting (flow card body — used elsewhere, unrelated to custom greeting)
   // ----------------------------------------------------------------
   greeting: () => ({
     flowCardBody:
@@ -13,40 +13,59 @@ export const Templates = {
       `Groceries, errands, cleaning and more — handled fast and reliably.\n\n` +
       `Tap *Proceed* to place your order in under 2 minutes.`,
   }),
- closedMessage: (nextOpen: string) => ({
-  body:
-    `Hi! 👋 We are currently closed.\n\n` +
-    `We'll be back ${nextOpen}.\n\n` +
-    `Feel free to send your order then and we'll get right on it! 😊`,
-}),
-
-// ----------------------------------------------------------------
-// flowNotReady
-// ----------------------------------------------------------------
-flowNotReady: () => ({
-  body: `Hi! We are setting up our ordering system. Please try again in a few minutes. 🙏`,
-}),
-
-// ----------------------------------------------------------------
-// menuGreeting
-// ----------------------------------------------------------------
-menuGreeting: (params: { businessName: string; welcomeText?: string; menuUrl: string }) => ({
-  body:
-    `Hi! 👋 Welcome to *${params.businessName}*\n\n` +
-    `${params.welcomeText ?? 'Tap the link below to view our menu and place your order 🍽️'}\n\n` +
-    `👉 ${params.menuUrl}`,
-}),
-menuGreetingCta: (params: { businessName: string; welcomeText?: string; menuUrl: string }) => ({
-  body: `Hi! 👋 Welcome to *${params.businessName}*\n\n${params.welcomeText ?? 'Tap below to view our menu and place your order 🍽️'}`,
-  footer: 'Powered by Cliqex',
-  buttonText: 'View Menu & Order →',
-  url: params.menuUrl,
-}),
 
   // ----------------------------------------------------------------
-  // flowOrderReceived
+  // customGreeting — sent to first-time customers when business has
+  // configured a custom "greeting" message template
   // ----------------------------------------------------------------
-  flowOrderReceived: (orderNumber: string, serviceType?: string) => {
+  customGreeting: (name: string, override: string) => ({
+    body: override.replace('{name}', name),
+  }),
+
+  // ----------------------------------------------------------------
+  // closedMessage — sent when a customer messages outside operating hours
+  // ----------------------------------------------------------------
+  closedMessage: (nextOpen: string, override?: string) => ({
+    body: override
+      ? override.replace('{nextOpen}', nextOpen)
+      : `Hi! 👋 We are currently closed.\n\n` +
+        `We'll be back ${nextOpen}.\n\n` +
+        `Feel free to send your order then and we'll get right on it! 😊`,
+  }),
+
+  // ----------------------------------------------------------------
+  // flowNotReady
+  // ----------------------------------------------------------------
+  flowNotReady: () => ({
+    body: `Hi! We are setting up our ordering system. Please try again in a few minutes. 🙏`,
+  }),
+
+  // ----------------------------------------------------------------
+  // menuGreeting
+  // ----------------------------------------------------------------
+  menuGreeting: (params: { businessName: string; welcomeText?: string; menuUrl: string }) => ({
+    body:
+      `Hi! 👋 Welcome to *${params.businessName}*\n\n` +
+      `${params.welcomeText ?? 'Tap the link below to view our menu and place your order 🍽️'}\n\n` +
+      `👉 ${params.menuUrl}`,
+  }),
+  menuGreetingCta: (params: { businessName: string; welcomeText?: string; menuUrl: string }) => ({
+    body: `Hi! 👋 Welcome to *${params.businessName}*\n\n${params.welcomeText ?? 'Tap below to view our menu and place your order 🍽️'}`,
+    footer: 'Powered by Cliqex',
+    buttonText: 'View Menu & Order →',
+    url: params.menuUrl,
+  }),
+
+  // ----------------------------------------------------------------
+  // flowOrderReceived — sent right after a customer submits an order.
+  // Business can override via messageTemplates.orderReceived,
+  // supporting the {orderNumber} placeholder.
+  // ----------------------------------------------------------------
+  flowOrderReceived: (orderNumber: string, serviceType?: string, override?: string) => {
+    if (override) {
+      return { body: override.replace('{orderNumber}', orderNumber) };
+    }
+
     const isCleaning  = serviceType === 'CLEANING';
     const isLogistics = serviceType === 'LOGISTICS';
 
@@ -69,7 +88,8 @@ menuGreetingCta: (params: { businessName: string; welcomeText?: string; menuUrl:
   },
 
   // ----------------------------------------------------------------
-  // quote
+  // quote — supports an optional footerOverride appended after the total
+  // (business.messageTemplates.quoteFooter)
   // ----------------------------------------------------------------
   quote: (params: {
     customerName: string | null;
@@ -82,6 +102,7 @@ menuGreetingCta: (params: { businessName: string; welcomeText?: string; menuUrl:
     vatAmount: number;
     total: number;
     serviceType?: string;
+    footerOverride?: string;
   }) => {
     const name = params.customerName ? params.customerName.split(' ')[0] : 'there';
     const isCleaning  = params.serviceType === 'CLEANING';
@@ -131,6 +152,11 @@ menuGreetingCta: (params: { businessName: string; welcomeText?: string; menuUrl:
 
     lines.push(`━━━━━━━━━━━━━━`);
     lines.push(`*Total            ₦${Math.round(params.total).toLocaleString()}*`);
+
+    if (params.footerOverride) {
+      lines.push('');
+      lines.push(params.footerOverride);
+    }
 
     return {
       body: lines.join('\n'),

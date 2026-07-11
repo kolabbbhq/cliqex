@@ -16,7 +16,7 @@ export class BusinessController {
     return this.businessService.getMyBusiness();
   }
 
- @Patch('me')
+@Patch('me')
 updateMyBusiness(
   @Body()
   body: {
@@ -29,9 +29,16 @@ updateMyBusiness(
     bankAccountName?: string;
     timezone?: string;
     operatingHours?: Record<string, { open: string; close: string; active: boolean }>;
+    estimatedDeliveryMin?: number;
+    estimatedDeliveryMax?: number;
+    estimatedDeliveryUnit?: string;
   },
 ) {
   return this.businessService.updateMyBusiness(body);
+}
+@Patch('me/messages')
+updateMessageTemplates(@Body() body: unknown) {
+  return this.businessService.updateMessageTemplates(body);
 }
 
 @Patch('me/whatsapp')

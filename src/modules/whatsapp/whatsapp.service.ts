@@ -199,7 +199,7 @@ export class WhatsappService {
     });
 
     // ✅ Pass mediaUrl through to routeMessage
-    await this.routeMessage(
+     await this.routeMessage(
       parsed,
       customer.id,
       token,
@@ -207,20 +207,21 @@ export class WhatsappService {
       activeOrder?.id,
       customer,
       mediaUrl,
+      isNew,
     );
   }
-
   // ----------------------------------------------------------------
   // routeMessage
   // ----------------------------------------------------------------
-  private async routeMessage(
+ private async routeMessage(
     msg: ParsedInboundMessage,
     customerId: string,
     token: string,
     businessId: string,
     activeOrderId?: string,
     customer?: any,
-    mediaUrl?: string,   // ← added
+    mediaUrl?: string,
+    isNew?: boolean,    
   ): Promise<void> {
     const phone = msg.phone;
     const payload = msg.buttonPayload?.toUpperCase();
@@ -274,11 +275,11 @@ if (msg.type === 'text' && msg.text) {
       }
     }
 
-    if (msg.type === 'text' || msg.type === 'image' || msg.type === 'audio') {
+       if (msg.type === 'text' || msg.type === 'image' || msg.type === 'audio') {
       if (activeOrderId) {
         return this.sendAutoAckIfNeeded(phone, activeOrderId, token);
       }
-      return this.sendGreeting(phone, businessId, token, customer);
+      return this.sendGreeting(phone, businessId, token, customer, isNew);
     }
 
     await this.sendFallback(phone, token);
@@ -375,96 +376,13 @@ if (msg.type === 'text' && msg.text) {
 async getThreadByCustomer(customerId: string) {
   return this.whatsappRepository.getThreadByCustomer(customerId);
 }
-  // ----------------------------------------------------------------
-  // sendGreeting
-  // ----------------------------------------------------------------
-//   async sendGreeting(
-//   phone: string,
-//   businessId: string,
-//   token: string,
-//   customer?: any,
-// ): Promise<void> {
-//   const [business, config] = await Promise.all([
-//     this.businessService.getById(businessId),
-//     this.businessService.getServiceConfig(businessId),
-//   ]);
-
-//   // ── Operating hours check ──────────────────────────────────────
-//   if (business.operatingHours) {
-//     const isOpen = this.businessHoursService.isOpen(
-//       business.operatingHours,
-//       business.timezone,
-//     );
-
-//     if (!isOpen) {
-//       const nextOpen = this.businessHoursService.nextOpeningTime(
-//         business.operatingHours,
-//         business.timezone,
-//       );
-//       this.logger.log(`Business ${businessId} is closed. Next open: ${nextOpen}`);
-//       await this.sendText({
-//         to: phone,
-//         message:
-//           `Hi! 👋 We are currently closed.\n\n` +
-//           `We'll be back ${nextOpen}.\n\n` +
-//           `Feel free to send your order then and we'll get right on it! 😊`,
-//         token,
-//       });
-//       return;
-//     }
-//   } else {
-//     this.logger.warn(
-//       `Business ${businessId} has no operatingHours configured — treating as always open`,
-//     );
-//   }
-//   // ── End hours check ───────────────────────────────────────────
-
-//   let flowId: string | null = null;
-//   try {
-//     flowId = await this.flowsService.getFlowIdForBusiness(businessId);
-//   } catch (err: any) {
-//     this.logger.warn(`getFlowIdForBusiness failed for ${businessId}: ${err.message}`);
-//   }
-
-//   if (!flowId) {
-//     this.logger.warn(`No flowId for business ${businessId} — sending plain text fallback`);
-//     await this.sendText({
-//       to: phone,
-//       message: 'Hi! We are setting up our ordering system. Please try again in a few minutes. 🙏',
-//       token,
-//     });
-//     return;
-//   }
-
-//   const welcomeText =
-//     config?.welcomeText ??
-//     'Your one-stop solution for everyday needs. 🛒\n\nTap *Proceed* to place your order.';
-
-//   await this.sendFlow({
-//     to: phone,
-//     flowId,
-//     flowToken: uuidv4(),
-//     headerImage: config?.headerImageUrl || undefined,
-//     body: welcomeText,
-//     footer: 'Powered by Cliqex',
-//     ctaText: 'Proceed',
-//     token,
-//     phoneId: business.whatsappPhoneId!,
-//     prefill: {
-//       customer_name: customer?.name ?? '',
-//       delivery_address: customer?.address ?? '',
-//       phone_number: phone,
-//     },
-//   });
-
-//   this.logger.log(`Sent flow ${flowId} to ${phone}`);
-// }
 
 async sendGreeting(
   phone: string,
   businessId: string,
   token: string,
   customer?: any,
+  isNew?: boolean,     // ← added
 ): Promise<void> {
   const [business, config] = await Promise.all([
     this.businessService.getById(businessId),
@@ -483,10 +401,13 @@ async sendGreeting(
         business.operatingHours,
         business.timezone,
       );
-      this.logger.log(`Business ${businessId} is closed. Next open: ${nextOpen}`);
+     this.logger.log(`Business ${businessId} is closed. Next open: ${nextOpen}`);
       await this.sendText({
         to: phone,
-        message: Templates.closedMessage(nextOpen).body,
+        message: Templates.closedMessage(
+          nextOpen,
+          (business.messageTemplates as any)?.closedMessage,
+        ).body,
         token,
       });
       return;
@@ -495,6 +416,16 @@ async sendGreeting(
     this.logger.warn(
       `Business ${businessId} has no operatingHours configured — treating as always open`,
     );
+  }
+
+  // ── Custom greeting for first-time customers ─────────────────
+  const greetingOverride = (business.messageTemplates as any)?.greeting;
+  if (isNew && greetingOverride) {
+    await this.sendText({
+      to: phone,
+      message: Templates.customGreeting(customer?.name ?? 'there', greetingOverride).body,
+      token,
+    });
   }
 
   // ── Web menu greeting (cta_url button) ──────────────────────
@@ -610,7 +541,10 @@ async sendGreeting(
     );
 
     const businessId = this.tenantContext.get();
-    const serviceConfig = await this.businessService.getServiceConfig(businessId);
+    const [serviceConfig, business] = await Promise.all([
+      this.businessService.getServiceConfig(businessId),
+      this.businessService.getById(businessId),
+    ]);
     const services = (serviceConfig?.services as unknown as FlowServiceDef[]) ?? [];
     const areas = (serviceConfig?.areas as unknown as FlowAreaDef[]) ?? [];
 
@@ -655,10 +589,13 @@ const areaFee = skipDeliveryFee ? 0 : (area?.deliveryFee ?? 0);
     const items = this.extractOrderItems(service ?? null, flowData);
     await this.ordersService.addItems(order.id, items);
 
-    const template = Templates.flowOrderReceived(order.orderNumber);
+    const template = Templates.flowOrderReceived(
+      order.orderNumber,
+      undefined,
+      (business.messageTemplates as any)?.orderReceived,
+    );
     await this.sendText({ to: phone, message: template.body, token });
   }
-
   // ----------------------------------------------------------------
   // handleConfirmOrder
   // ----------------------------------------------------------------

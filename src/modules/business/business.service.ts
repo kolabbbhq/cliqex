@@ -4,11 +4,15 @@ import {
   NotFoundException,
   ForbiddenException,
   ConflictException,
+  BadRequestException
 } from '@nestjs/common';
 import { Business, ServiceConfig } from '@prisma/client';
 import { TenantContext } from '@common/tenant/tenant-context.service';
 import { BusinessRepository, BusinessWithConfig } from '@modules/business/business.repository';
 import { ConfigService } from '@nestjs/config';
+import { UpdateOperatingHoursSchema } from './Schemas/business-hours.schema';
+import { UpdateMessageTemplatesSchema } from './Schemas/message-templates.schema';
+import { UpdateDeliveryEstimatesSchema } from './Schemas/delivery-estimates.schema';
 
 @Injectable()
 export class BusinessService {
@@ -65,25 +69,79 @@ async getMyBusiness(): Promise<BusinessWithConfig & { webhookUrl: string }> {
     return this.businessRepo.findAll();
   }
 
-  async updateMyBusiness(data: {
-    name?: string;
-    tagline?: string;
-    logoUrl?: string;
-    primaryColor?: string;
-    bankName?: string;
-    bankAccountNumber?: string;
-    bankAccountName?: string;
-  }): Promise<Business> {
-    const businessId = this.tenant.get();
-    const updated = await this.businessRepo.update(businessId, data as any);
+ async updateMyBusiness(data: {
+  name?: string;
+  tagline?: string;
+  logoUrl?: string;
+  primaryColor?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountName?: string;
+  timezone?: string;
+  operatingHours?: Record<string, { open: string; close: string; active: boolean }>;
+  estimatedDeliveryMin?: number;
+  estimatedDeliveryMax?: number;
+  estimatedDeliveryUnit?: string;
+}): Promise<Business> {
+  const businessId = this.tenant.get();
 
-    // Invalidate cache for this business's phone
-    if (updated.whatsappPhoneId) {
-      this.phoneIdCache.delete(updated.whatsappPhoneId);
+  let operatingHours = data.operatingHours;
+  if (operatingHours) {
+    const result = UpdateOperatingHoursSchema.safeParse(operatingHours);
+    if (!result.success) {
+      throw new BadRequestException(result.error.flatten());
     }
-
-    return updated;
+    operatingHours = result.data;
   }
+
+  let deliveryEstimates:
+    | { estimatedDeliveryMin: number; estimatedDeliveryMax: number; estimatedDeliveryUnit: string }
+    | undefined;
+
+  const wantsDeliveryUpdate =
+    data.estimatedDeliveryMin !== undefined ||
+    data.estimatedDeliveryMax !== undefined ||
+    data.estimatedDeliveryUnit !== undefined;
+
+  if (wantsDeliveryUpdate) {
+    const result = UpdateDeliveryEstimatesSchema.safeParse({
+      estimatedDeliveryMin: data.estimatedDeliveryMin,
+      estimatedDeliveryMax: data.estimatedDeliveryMax,
+      estimatedDeliveryUnit: data.estimatedDeliveryUnit,
+    });
+    if (!result.success) {
+      throw new BadRequestException(result.error.flatten());
+    }
+    deliveryEstimates = result.data;
+  }
+
+  const updated = await this.businessRepo.update(businessId, {
+    ...data,
+    ...(operatingHours && { operatingHours }),
+    ...(deliveryEstimates && deliveryEstimates),
+  } as any);
+
+  if (updated.whatsappPhoneId) {
+    this.phoneIdCache.delete(updated.whatsappPhoneId);
+  }
+
+  return updated;
+}
+
+async updateMessageTemplates(data: unknown): Promise<Business> {
+  const result = UpdateMessageTemplatesSchema.safeParse(data);
+  if (!result.success) {
+    throw new BadRequestException(result.error.flatten());
+  }
+
+  const businessId = this.tenant.get();
+  const existing = await this.businessRepo.findById(businessId);
+
+  // merge so updating one field doesn't wipe the others
+  const merged = { ...((existing?.messageTemplates as any) ?? {}), ...result.data };
+
+  return this.businessRepo.update(businessId, { messageTemplates: merged as any });
+}
 async connectWhatsApp(data: {
   whatsappPhoneId: string;
   whatsappToken: string;

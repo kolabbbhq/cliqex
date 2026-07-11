@@ -34,6 +34,8 @@ export class QuotesService {
       throw new BadRequestException(`Cannot preview quote for order with status ${order.status}`);
     }
 
+    const business = await this.businessService.getById(order.businessId);
+
     const subtotal = order.items.reduce((sum, item) => {
       const qty = parseInt(item.quantity, 10) || 1;
       return sum + Number(item.unitPrice ?? 0) * qty;
@@ -54,6 +56,7 @@ export class QuotesService {
       vatAmount: order.vatAmount,
       total: subtotal + Number(order.deliveryFee) + order.serviceCharge + order.vatAmount,
       serviceType: order.serviceType,
+      footerOverride: (business.messageTemplates as any)?.quoteFooter,
     });
 
     return {
@@ -131,16 +134,20 @@ export class QuotesService {
 
 
     // ── 4. Short follow-up text with action buttons ───────────────
-   await this.whatsappService.sendButtons({
-  to: order.customer.phone,
-  body: `Tap below to confirm your order:`,
-  buttons: [
-    { id: 'CONFIRM_ORDER', title: '✅ Confirm order' },
-    { id: 'CANCEL_ORDER', title: '❌ Cancel' },
-  ],
-  token: business.whatsappToken!,
-});
+   const quoteFooter = (business.messageTemplates as any)?.quoteFooter;
+    const followUpBody = quoteFooter
+      ? `Tap below to confirm your order:\n\n${quoteFooter}`
+      : `Tap below to confirm your order:`;
 
+    await this.whatsappService.sendButtons({
+      to: order.customer.phone,
+      body: followUpBody,
+      buttons: [
+        { id: 'CONFIRM_ORDER', title: '✅ Confirm order' },
+        { id: 'CANCEL_ORDER', title: '❌ Cancel' },
+      ],
+      token: business.whatsappToken!,
+    });
     // ── 5. Price history for AI learning ──────────────────────────
     await this.writePriceHistory(orderId, order.serviceType, input.items, order.items);
 
