@@ -2,6 +2,10 @@
 node_modules/
 dist/
 
+*.pem
+flow_private_key.pem
+flow_public_key.pem
+
 # Environment — NEVER commit these
 .env
 .env.local

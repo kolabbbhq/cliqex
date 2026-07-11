@@ -1,21 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@common/prisma/prisma.service';
 import { TenantContext } from '@common/tenant/tenant-context.service';
 
 @Injectable()
 export class AnalyticsService {
+  private readonly logger = new Logger(AnalyticsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenant: TenantContext,
   ) {}
 
-  async getDashboard() {
+  async getDashboardStats() {
     const businessId = this.tenant.get();
 
     const now = new Date();
-
-    const startOfToday = new Date(now);
-    startOfToday.setHours(0, 0, 0, 0);
+    const startOfDay = new Date(now);
+    startOfDay.setHours(0, 0, 0, 0);
 
     const startOfWeek = new Date(now);
     startOfWeek.setDate(now.getDate() - 7);
@@ -25,91 +26,98 @@ export class AnalyticsService {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
-    const CONFIRMED_STATUSES = ['PAID', 'PROCESSING', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED'];
-
+    // ── Run all queries in parallel ─────────────────────────────────
     const [
       totalOrders,
-      ordersThisWeek,
-      ordersToday,
+      todayOrders,
+      weekOrders,
       ordersByStatus,
-      needsAttentionRaw,
-      confirmedRevenueThisMonth,
-      confirmedRevenueAllTime,
-      pendingRevenue,
+      needsAttentionOrders,
+      revenueResults,
       deliveredCount,
       totalCustomers,
-      newCustomersToday,
-      newCustomersThisWeek,
+      newTodayCustomers,
+      newWeekCustomers,
       topCustomers,
       buddyStats,
-      topRatedBuddies,
-      reviewStats,
-      recentOrdersRaw,
+      topBuddies,
+      reviewSummary,
+      reviewBreakdown,
+      recentOrders,
     ] = await Promise.all([
-      // ── Orders ──────────────────────────────────────────────────
+      // Total orders
       this.prisma.order.count({ where: { businessId } }),
 
+      // Today's orders
+      this.prisma.order.count({
+        where: { businessId, createdAt: { gte: startOfDay } },
+      }),
+
+      // This week's orders
       this.prisma.order.count({
         where: { businessId, createdAt: { gte: startOfWeek } },
       }),
 
-      this.prisma.order.count({
-        where: { businessId, createdAt: { gte: startOfToday } },
-      }),
-
+      // Orders by status
       this.prisma.order.groupBy({
         by: ['status'],
         where: { businessId },
         _count: { status: true },
       }),
 
+      // Needs attention — NEW orders with no quote, oldest first
       this.prisma.order.findMany({
         where: { businessId, status: 'NEW' },
         include: {
-          customer: { select: { name: true } },
           items: { select: { id: true } },
+          customer: { select: { name: true } },
         },
         orderBy: { createdAt: 'asc' },
+        take: 10,
       }),
 
-      // ── Revenue ──────────────────────────────────────────────────
-      this.prisma.order.aggregate({
-        where: {
-          businessId,
-          status: { in: CONFIRMED_STATUSES as any },
-          createdAt: { gte: startOfMonth },
-        },
-        _sum: { total: true },
-      }),
+      // Revenue — confirmed this month, all time, pending
+      Promise.all([
+        this.prisma.order.aggregate({
+          where: {
+            businessId,
+            status: { in: ['PAID', 'PROCESSING', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED'] },
+            createdAt: { gte: startOfMonth },
+          },
+          _sum: { total: true },
+        }),
+        this.prisma.order.aggregate({
+          where: {
+            businessId,
+            status: { in: ['PAID', 'PROCESSING', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED'] },
+          },
+          _sum: { total: true },
+        }),
+        this.prisma.order.aggregate({
+          where: { businessId, status: 'AWAITING_PAYMENT' },
+          _sum: { total: true },
+        }),
+      ]),
 
-      this.prisma.order.aggregate({
-        where: {
-          businessId,
-          status: { in: CONFIRMED_STATUSES as any },
-        },
-        _sum: { total: true },
-      }),
-
-      this.prisma.order.aggregate({
-        where: { businessId, status: 'AWAITING_PAYMENT' },
-        _sum: { total: true },
-      }),
-
+      // Delivered order count for average order value
       this.prisma.order.count({
         where: { businessId, status: 'DELIVERED' },
       }),
 
-      // ── Customers ────────────────────────────────────────────────
+      // Total customers
       this.prisma.customer.count({ where: { businessId } }),
 
+      // New customers today
       this.prisma.customer.count({
-        where: { businessId, createdAt: { gte: startOfToday } },
+        where: { businessId, createdAt: { gte: startOfDay } },
       }),
 
+      // New customers this week
       this.prisma.customer.count({
         where: { businessId, createdAt: { gte: startOfWeek } },
       }),
 
+      // Top 5 customers by spend
       this.prisma.customer.findMany({
         where: { businessId },
         orderBy: { totalSpend: 'desc' },
@@ -123,13 +131,14 @@ export class AnalyticsService {
         },
       }),
 
-      // ── Buddies ──────────────────────────────────────────────────
+      // Buddy counts by status
       this.prisma.buddy.groupBy({
         by: ['status'],
         where: { businessId, isActive: true },
         _count: { status: true },
       }),
 
+      // Top 3 rated buddies
       this.prisma.buddy.findMany({
         where: { businessId, isActive: true, totalDeliveries: { gte: 1 } },
         orderBy: { rating: 'desc' },
@@ -137,14 +146,22 @@ export class AnalyticsService {
         select: { id: true, name: true, rating: true, totalDeliveries: true },
       }),
 
-      // ── Reviews ──────────────────────────────────────────────────
-      this.prisma.review.groupBy({
-        by: ['rating'],
-        where: { businessId },
+      // Review average and total
+      this.prisma.review.aggregate({
+        where: { order: { businessId } },
+        _avg: { rating: true },
         _count: { rating: true },
       }),
 
-      // ── Recent orders ─────────────────────────────────────────────
+      // Review breakdown by score
+      this.prisma.review.groupBy({
+        by: ['rating'],
+        where: { order: { businessId } },
+        _count: { rating: true },
+        orderBy: { rating: 'desc' },
+      }),
+
+      // Recent 10 orders with full detail
       this.prisma.order.findMany({
         where: { businessId },
         orderBy: { createdAt: 'desc' },
@@ -162,97 +179,125 @@ export class AnalyticsService {
       }),
     ]);
 
-    // ── Shape: orders.byStatus ─────────────────────────────────────
-    const allStatuses = [
-      'NEW', 'QUOTED', 'AWAITING_PAYMENT', 'PAID',
-      'PROCESSING', 'ASSIGNED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED',
-    ];
-    const byStatus = Object.fromEntries(
-      allStatuses.map((s) => [
-        s,
-        ordersByStatus.find((r) => r.status === s)?._count.status ?? 0,
-      ]),
-    ) as Record<string, number>;
+    // ── Build byStatus map ──────────────────────────────────────────
+    const statusMap: Record<string, number> = {
+      NEW: 0,
+      QUOTED: 0,
+      AWAITING_PAYMENT: 0,
+      PAID: 0,
+      PROCESSING: 0,
+      ASSIGNED: 0,
+      IN_TRANSIT: 0,
+      DELIVERED: 0,
+      CANCELLED: 0,
+    };
+    for (const s of ordersByStatus) {
+      statusMap[s.status] = s._count.status;
+    }
 
-    // ── Shape: orders.needsAttention ──────────────────────────────
-    const needsAttention = needsAttentionRaw.map((o) => ({
+    // ── Needs attention ─────────────────────────────────────────────
+    const needsAttention = needsAttentionOrders.map((o) => ({
       orderId: o.id,
       orderNumber: o.orderNumber,
       customerName: o.customer.name,
       itemCount: o.items.length,
-      waitingMinutes: Math.floor((Date.now() - new Date(o.createdAt).getTime()) / 60000),
+      waitingMinutes: Math.floor(
+        (Date.now() - new Date(o.createdAt).getTime()) / 60000,
+      ),
       createdAt: o.createdAt,
     }));
 
-    // ── Shape: revenue ────────────────────────────────────────────
-    const confirmedAllTime = Number(confirmedRevenueAllTime._sum.total ?? 0);
-    const revenue = {
-      confirmedThisMonth: Number(confirmedRevenueThisMonth._sum.total ?? 0),
-      confirmedAllTime,
-      pendingCollection: Number(pendingRevenue._sum.total ?? 0),
-      averageOrderValue: deliveredCount > 0 ? confirmedAllTime / deliveredCount : 0,
-    };
+    // ── Revenue — all Number() conversions here ─────────────────────
+    const confirmedThisMonth = Number(revenueResults[0]._sum.total ?? 0);
+    const confirmedAllTime   = Number(revenueResults[1]._sum.total ?? 0);
+    const pendingCollection  = Number(revenueResults[2]._sum.total ?? 0);
+    const averageOrderValue  = deliveredCount > 0
+      ? confirmedAllTime / deliveredCount
+      : 0;
 
-    // ── Shape: customers ──────────────────────────────────────────
-    const customers = {
-      total: totalCustomers,
-      newToday: newCustomersToday,
-      newThisWeek: newCustomersThisWeek,
-      topCustomers: topCustomers.map((c) => ({
-        ...c,
-        totalSpend: Number(c.totalSpend),
-      })),
+    // ── Buddy stats ─────────────────────────────────────────────────
+    const buddyStatusMap: Record<string, number> = {
+      AVAILABLE: 0,
+      BUSY: 0,
+      OFFLINE: 0,
     };
+    for (const b of buddyStats) {
+      buddyStatusMap[b.status] = b._count.status;
+    }
 
-    // ── Shape: buddies ────────────────────────────────────────────
-    const buddyStatusMap = Object.fromEntries(
-      buddyStats.map((r) => [r.status, r._count.status]),
-    );
-    const buddies = {
-      total: (buddyStatusMap['AVAILABLE'] ?? 0) + (buddyStatusMap['BUSY'] ?? 0) + (buddyStatusMap['OFFLINE'] ?? 0),
-      available: buddyStatusMap['AVAILABLE'] ?? 0,
-      busy: buddyStatusMap['BUSY'] ?? 0,
-      offline: buddyStatusMap['OFFLINE'] ?? 0,
-      topRated: topRatedBuddies,
-    };
+    const totalBuddies = Object.values(buddyStatusMap).reduce((a, b) => a + b, 0);
 
-    // ── Shape: reviews ────────────────────────────────────────────
-    const totalReviews = reviewStats.reduce((sum, r) => sum + r._count.rating, 0);
-    const weightedSum = reviewStats.reduce((sum, r) => sum + r.rating * r._count.rating, 0);
-    const reviews = {
-      averageRating: totalReviews > 0 ? Math.round((weightedSum / totalReviews) * 10) / 10 : 0,
-      totalReviews,
-      breakdown: reviewStats
-        .map((r) => ({ rating: r.rating, count: r._count.rating }))
-        .sort((a, b) => b.rating - a.rating),
-    };
+    // ── Recent orders ───────────────────────────────────────────────
+    const terminalStatuses = ['DELIVERED', 'CANCELLED'];
+    const recentOrdersMapped = recentOrders.map((o) => {
+      const lastMessage = o.messages[0];
+      const isTerminal = terminalStatuses.includes(o.status);
+      const hasUnreadMessage =
+        !isTerminal && lastMessage?.direction === 'INBOUND';
 
-    // ── Shape: recentOrders ───────────────────────────────────────
-    const TERMINAL = ['DELIVERED', 'CANCELLED'];
-    const recentOrders = recentOrdersRaw.map((o) => {
-      const lastMessage = o.messages[0]; // already ordered desc, take:1
-      const isTerminal = TERMINAL.includes(o.status);
       return {
         id: o.id,
         orderNumber: o.orderNumber,
         status: o.status,
         serviceType: o.serviceType,
-        total: Number(o.total),
+        total: Number(o.total),           // ← Number() conversion
         createdAt: o.createdAt,
         customer: o.customer,
-        buddy: o.buddy,
+        buddy: o.buddy ?? null,
         itemCount: o.items.length,
-        hasUnreadMessage: !isTerminal && lastMessage?.direction === 'INBOUND',
+        hasUnreadMessage,
       };
     });
 
+    // ── Top customers ───────────────────────────────────────────────
+    const topCustomersMapped = topCustomers.map((c) => ({
+      id: c.id,
+      name: c.name,
+      phone: c.phone,
+      totalOrders: c.totalOrders,
+      totalSpend: Number(c.totalSpend),   // ← Number() conversion
+    }));
+
+    // ── Reviews ─────────────────────────────────────────────────────
+    const reviewBreakdownMapped = reviewBreakdown.map((r) => ({
+      rating: r.rating,
+      count: r._count.rating,
+    }));
+
+    // ── Return ──────────────────────────────────────────────────────
     return {
-      orders: { total: totalOrders, thisWeek: ordersThisWeek, today: ordersToday, byStatus, needsAttention },
-      revenue,
-      customers,
-      buddies,
-      reviews,
-      recentOrders,
+      orders: {
+        total: totalOrders,
+        today: todayOrders,
+        thisWeek: weekOrders,
+        byStatus: statusMap,
+        needsAttention,
+      },
+      revenue: {
+        confirmedThisMonth,
+        confirmedAllTime,
+        pendingCollection,
+        averageOrderValue: Math.round(averageOrderValue * 100) / 100,
+      },
+      customers: {
+        total: totalCustomers,
+        newToday: newTodayCustomers,
+        newThisWeek: newWeekCustomers,
+        topCustomers: topCustomersMapped,
+      },
+      buddies: {
+        total: totalBuddies,
+        available: buddyStatusMap['AVAILABLE'],
+        busy: buddyStatusMap['BUSY'],
+        offline: buddyStatusMap['OFFLINE'],
+        topRated: topBuddies,
+      },
+      reviews: {
+        averageRating: Math.round((reviewSummary._avg.rating ?? 0) * 10) / 10,
+        totalReviews: reviewSummary._count.rating,
+        breakdown: reviewBreakdownMapped,
+      },
+      recentOrders: recentOrdersMapped,
     };
   }
 }
