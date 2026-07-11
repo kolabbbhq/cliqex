@@ -9,6 +9,6 @@ export class AnalyticsController {
 
   @Get()
   getDashboard() {
-    return this.analyticsService.getDashboard();
+return this.analyticsService.getDashboardStats();
   }
 }
