@@ -73,6 +73,18 @@ connectWhatsApp(
     return this.businessService.updateServiceConfig(body);
   }
 
+  // ---- WhatsApp Templates (Meta-approved broadcast templates) ----
+
+  @Get('me/templates')
+  listTemplates() {
+    return this.businessService.listTemplates();
+  }
+
+  @Post('me/templates')
+  createTemplate(@Body() body: unknown) {
+    return this.businessService.createTemplate(body);
+  }
+
   // ---- Super admin routes ----
 
   @Get()

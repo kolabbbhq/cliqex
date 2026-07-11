@@ -10,10 +10,14 @@ import { Business, ServiceConfig } from '@prisma/client';
 import { TenantContext } from '@common/tenant/tenant-context.service';
 import { BusinessRepository, BusinessWithConfig } from '@modules/business/business.repository';
 import { ConfigService } from '@nestjs/config';
-import { UpdateOperatingHoursSchema } from './Schemas/business-hours.schema';
-import { UpdateMessageTemplatesSchema } from './Schemas/message-templates.schema';
-import { UpdateDeliveryEstimatesSchema } from './Schemas/delivery-estimates.schema';
+import { UpdateOperatingHoursSchema } from './schemas/business-hours.schema';
+import { UpdateMessageTemplatesSchema } from './schemas/message-templates.schema';
+import { UpdateDeliveryEstimatesSchema } from './schemas/delivery-estimates.schema';
+import { CreateWhatsappTemplateSchema } from './schemas/whatsapp-template.schema';
 import { Templates } from '@modules/whatsapp/templates/messages.template';
+import axios from 'axios';
+
+const GRAPH_API_VERSION = 'v20.0';
 
 @Injectable()
 export class BusinessService {
@@ -142,18 +146,11 @@ async getMessageTemplates(): Promise<{
   const overrides = (business as any).messageTemplates ?? {};
 
   return {
-    // No default exists here for real — first-time customers get the
-    // WhatsApp Flow card or menu CTA, not standalone text. Genuinely blank.
     greeting: overrides.greeting ?? '',
-
-    // Pulls the live default straight from Templates.ts — never duplicated,
-    // never goes stale if the wording changes there.
     orderReceived:
       overrides.orderReceived ?? Templates.flowOrderReceived('{orderNumber}').body,
-
     closedMessage:
       overrides.closedMessage ?? Templates.closedMessage('{nextOpen}').body,
-
     quoteFooter: overrides.quoteFooter ?? '',
   };
 }
@@ -167,7 +164,6 @@ async updateMessageTemplates(data: unknown): Promise<Business> {
   const businessId = this.tenant.get();
   const existing = await this.businessRepo.findById(businessId);
 
-  // merge so updating one field doesn't wipe the others
   const merged = { ...((existing?.messageTemplates as any) ?? {}), ...result.data };
 
   return this.businessRepo.update(businessId, { messageTemplates: merged as any });
@@ -228,5 +224,103 @@ async connectWhatsApp(data: {
     const business = await this.businessRepo.create(data);
     this.logger.log(`New business created: ${business.name} (${business.id})`);
     return business;
+  }
+
+  // ----------------------------------------------------------------
+  // WhatsApp Templates — list + create, wraps Meta's Graph API so
+  // business owners never touch Meta Business Manager or curl.
+  // Always scoped to the logged-in admin's own business (this.tenant.get()),
+  // same pattern as every other "me/..." method in this service.
+  // ----------------------------------------------------------------
+
+  async listTemplates(): Promise<any[]> {
+    const businessId = this.tenant.get();
+    const business = await this.businessRepo.findById(businessId);
+    if (!business) throw new NotFoundException('Business not found');
+
+    if (!business.whatsappToken || !business.wabaId) {
+      throw new BadRequestException(
+        'WhatsApp Business Account not configured for this business — connect WhatsApp first',
+      );
+    }
+
+    try {
+      const res = await axios.get(
+        `https://graph.facebook.com/${GRAPH_API_VERSION}/${business.wabaId}/message_templates`,
+        { params: { access_token: business.whatsappToken } },
+      );
+      return res.data.data;
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to list WhatsApp templates for business ${businessId}: ${JSON.stringify(err.response?.data)}`,
+      );
+      throw new BadRequestException(
+        err.response?.data?.error?.message ?? 'Failed to fetch templates from WhatsApp',
+      );
+    }
+  }
+
+  async createTemplate(data: unknown): Promise<{ id: string; status: string; category: string }> {
+    const result = CreateWhatsappTemplateSchema.safeParse(data);
+    if (!result.success) {
+      throw new BadRequestException(result.error.flatten());
+    }
+    const input = result.data;
+
+    const businessId = this.tenant.get();
+    const business = await this.businessRepo.findById(businessId);
+    if (!business) throw new NotFoundException('Business not found');
+
+    if (!business.whatsappToken || !business.wabaId) {
+      throw new BadRequestException(
+        'WhatsApp Business Account not configured for this business — connect WhatsApp first',
+      );
+    }
+
+    const variableCount = (input.bodyText.match(/\{\{\d+\}\}/g) ?? []).length;
+    if (variableCount > 0 && (!input.bodyExampleValues || input.bodyExampleValues.length < variableCount)) {
+      throw new BadRequestException(
+        `Body text has ${variableCount} variable(s) (e.g. {{1}}) but only ${input.bodyExampleValues?.length ?? 0} example value(s) were given. ` +
+        `Meta requires one example value per variable to review the template.`,
+      );
+    }
+
+    const components: any[] = [
+      {
+        type: 'BODY',
+        text: input.bodyText,
+        ...(input.bodyExampleValues?.length
+          ? { example: { body_text: [input.bodyExampleValues] } }
+          : {}),
+      },
+    ];
+
+    try {
+      const res = await axios.post(
+        `https://graph.facebook.com/${GRAPH_API_VERSION}/${business.wabaId}/message_templates`,
+        {
+          name: input.name,
+          language: input.language,
+          category: input.category,
+          components,
+        },
+        { headers: { Authorization: `Bearer ${business.whatsappToken}` } },
+      );
+
+      this.logger.log(
+        `WhatsApp template "${input.name}" submitted for business ${businessId} — status: ${res.data.status}`,
+      );
+
+      return res.data;
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to create WhatsApp template for business ${businessId}: ${JSON.stringify(err.response?.data)}`,
+      );
+      throw new BadRequestException(
+        err.response?.data?.error?.error_data?.details ??
+        err.response?.data?.error?.message ??
+        'Failed to create template on WhatsApp',
+      );
+    }
   }
 }
