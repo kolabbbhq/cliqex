@@ -26,11 +26,36 @@ export class CustomersController {
   async findAll(@Query() query: ListCustomersDto) {
     return this.customersService.findAll(query);
   }
-  
-//
+
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.customersService.findOne(id);
+  }
+
+  // ----------------------------------------------------------------
+  // GET /customers/:id/thread
+  // Returns all messages for this customer — works even if they
+  // have no orders yet (unlike /whatsapp/thread/:orderId)
+  // ----------------------------------------------------------------
+  @Get(':id/thread')
+  async getThread(@Param('id') id: string) {
+    return this.customersService.getThread(id);
+  }
+
+  // ----------------------------------------------------------------
+  // POST /customers/:id/message
+  // Admin sends a direct WhatsApp message to this customer
+  // Works for customers with no orders — useful for follow-ups,
+  // welcoming new customers, answering enquiries etc.
+  // ----------------------------------------------------------------
+  @Post(':id/message')
+  @HttpCode(HttpStatus.OK)
+  async sendMessage(
+    @Param('id') id: string,
+    @Body() dto: { message: string },
+  ) {
+    await this.customersService.sendMessage(id, dto.message);
+    return { message: 'Message sent' };
   }
 
   @Patch(':id')
