@@ -13,6 +13,7 @@ import axios from 'axios';
 import { PaymentsRepository } from './payments.repository';
 import { OrdersService } from '@modules/orders/orders.service';
 import { CustomersService } from '@modules/customers/customers.service';
+import { TenantContext } from '@common/tenant/tenant-context.service';
 import { EVENTS } from '@common/events/events.constants';
 import {
   InitiatePaymentInput,
@@ -34,6 +35,7 @@ export class PaymentsService {
     private readonly customersService: CustomersService,
     private readonly eventEmitter: EventEmitter2,
     private readonly config: ConfigService,
+    private readonly tenantContext: TenantContext,
   ) {
     this.paystackSecret = this.config.get<string>('PAYSTACK_SECRET_KEY')!;
   }
@@ -58,18 +60,18 @@ export class PaymentsService {
     const reference = `EB-${order.orderNumber}-${Date.now()}`;
     const amountKobo = Math.round(Number(order.total) * 100);
 
-  const response = await this.callPaystack('POST', '/transaction/initialize', {
-  amount: amountKobo,
-  email: `${order.customer.phone}@errandsbuddy.com`,
-  reference,
-  channels: ['card', 'bank_transfer', 'ussd'], // customer picks on Paystack's page
-  metadata: {
-    orderId: order.id,
-    orderNumber: order.orderNumber,
-    phone: order.customer.phone,
-  },
+    const response = await this.callPaystack('POST', '/transaction/initialize', {
+      amount: amountKobo,
+      email: `${order.customer.phone}@errandsbuddy.com`,
+      reference,
+      channels: ['card', 'bank_transfer', 'ussd'], // customer picks on Paystack's page
+      metadata: {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        phone: order.customer.phone,
+      },
       callback_url: `${this.config.get('APP_URL')}/api/v1/payments/verify/${reference}`,
-});
+    });
 
     const { authorization_url, access_code } = response.data;
 
@@ -109,7 +111,18 @@ export class PaymentsService {
     await this.confirmPaystackPayment(reference);
   }
 
-   async verifyAndConfirmPaystack(reference: string): Promise<{
+  // ----------------------------------------------------------------
+  // Verify a Paystack payment directly (fallback for the customer's
+  // browser redirect after paying — the webhook is the source of
+  // truth, but it can lag or occasionally not arrive, and the
+  // customer is sitting on a blank screen waiting).
+  //
+  // No JWT guard on this route (it's @Public), so there is no tenant
+  // context yet — we resolve businessId from the payment record
+  // itself and set it explicitly before touching any tenant-scoped
+  // service, same pattern WhatsappService.handleWebhook already uses.
+  // ----------------------------------------------------------------
+  async verifyAndConfirmPaystack(reference: string): Promise<{
     status: 'PAID' | 'PENDING' | 'FAILED';
     orderNumber?: string;
   }> {
@@ -117,6 +130,8 @@ export class PaymentsService {
     if (!payment) {
       throw new NotFoundException(`No payment found for reference ${reference}`);
     }
+
+    this.tenantContext.set(payment.businessId, false);
 
     const order = await this.ordersService.findOne(payment.orderId);
 
@@ -139,13 +154,20 @@ export class PaymentsService {
     return { status: 'PENDING', orderNumber: order.orderNumber };
   }
 
-   private async confirmPaystackPayment(reference: string): Promise<void> {
+  // ----------------------------------------------------------------
+  // Shared confirm logic — used by both the webhook and the
+  // browser-redirect verify fallback. Idempotent. Also sets tenant
+  // context itself since the webhook path has no JWT either.
+  // ----------------------------------------------------------------
+  private async confirmPaystackPayment(reference: string): Promise<void> {
     const payment = await this.paymentsRepository.findByPaystackRef(reference);
 
     if (!payment) {
       this.logger.warn(`confirmPaystackPayment: payment not found for ref ${reference}`);
       return;
     }
+
+    this.tenantContext.set(payment.businessId, false);
 
     if (payment.status === 'CONFIRMED') {
       this.logger.log(`confirmPaystackPayment: ${reference} already confirmed — skipping`);
@@ -162,20 +184,9 @@ export class PaymentsService {
     this.eventEmitter.emit(EVENTS.PAYMENT_CONFIRMED, { payment });
     this.logger.log(`Payment confirmed: ${reference}`);
   }
+
   // ----------------------------------------------------------------
   // Admin manually confirms bank transfer
-  //
-  // proofUrl resolution order (FIXED):
-  //   1. Existing payment.proofUrl — set automatically by
-  //      WhatsappService.handlePaymentProofReceived when the customer
-  //      sent a screenshot (already uploaded to Cloudinary there).
-  //      This wins whenever it exists, so a stray/placeholder proofUrl
-  //      in the confirm request body can never silently clobber a
-  //      real customer-submitted proof.
-  //   2. input.proofUrl — only used as a fallback when there is no
-  //      payment record yet, or no proof was ever uploaded (admin
-  //      manually attaching a proof it obtained some other way).
-  //   3. undefined — allowed, but logged, since there's no proof on file.
   // ----------------------------------------------------------------
   async confirmBankTransfer(
     orderId: string,
@@ -192,7 +203,6 @@ export class PaymentsService {
 
     let payment = await this.paymentsRepository.findByOrderId(orderId);
 
-    // existing real proof always wins over whatever the request body sends
     const proofUrl = payment?.proofUrl ?? input.proofUrl ?? undefined;
 
     if (!payment) {
@@ -221,7 +231,6 @@ export class PaymentsService {
 
     await this.paymentsRepository.confirm(payment.id, adminId, proofUrl);
 
-    // markPaid auto-chains to markProcessing — events fire in sequence
     await this.ordersService.markPaid(orderId);
 
     await this.customersService.incrementStats(order.customerId, Number(order.total));
@@ -269,10 +278,7 @@ export class PaymentsService {
   }
 
   // ----------------------------------------------------------------
-  // Preview bank transfer — admin's view before/after confirming
-  // Works regardless of order status. Shows expected amount + any
-  // existing proof so admin can compare before or review after
-  // confirming/rejecting.
+  // Preview bank transfer
   // ----------------------------------------------------------------
   async previewBankTransfer(orderId: string) {
     const order = await this.ordersService.findOne(orderId);
