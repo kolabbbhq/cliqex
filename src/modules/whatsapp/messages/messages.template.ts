@@ -170,12 +170,13 @@ export const Templates = {
   // ----------------------------------------------------------------
   // paymentOptions
   // ----------------------------------------------------------------
-  paymentOptions: () => ({
-    body: `Great choice! How would you like to pay?`,
-    buttons: [
-      { id: 'PAY_TRANSFER', title: '🏦 Bank transfer' },
-    ],
-  }),
+ paymentOptions: () => ({
+  body: `Great choice! How would you like to pay?`,
+  buttons: [
+    { id: 'PAY_PAYSTACK', title: '💳 Pay with Paystack' },
+    { id: 'PAY_TRANSFER', title: '🏦 Bank transfer' },
+  ],
+}),
 
   // ----------------------------------------------------------------
   // bankTransferDetails

@@ -10,6 +10,7 @@ import { UploadModule } from '@modules/upload/upload.module';
 import { FlowsModule } from './flows/flows.module';
 import { EmailModule } from '@modules/email/email.module';
 import { PrismaModule } from '@common/prisma/prisma.module';
+import { PaymentsModule } from '@modules/payments/payments.module';
 import { ReviewsModule } from '@modules/reviews/reviews.module';
 
 @Module({
@@ -21,7 +22,9 @@ import { ReviewsModule } from '@modules/reviews/reviews.module';
     FlowsModule,
     EmailModule,      // ← Task 10: email admins on payment proof
     PrismaModule, 
-    ReviewsModule,    // ← Task 10: query admins + upsert payment record
+    ReviewsModule, 
+        PaymentsModule,   // ← PaymentsService.initiatePaystack()
+   // ← Task 10: query admins + upsert payment record
   ],
   controllers: [WhatsappController],
   providers: [WhatsappService, WhatsappRepository, FlowsService],

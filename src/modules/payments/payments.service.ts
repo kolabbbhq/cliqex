@@ -58,17 +58,18 @@ export class PaymentsService {
     const reference = `EB-${order.orderNumber}-${Date.now()}`;
     const amountKobo = Math.round(Number(order.total) * 100);
 
-    const response = await this.callPaystack('POST', '/transaction/initialize', {
-      amount: amountKobo,
-      email: `${order.customer.phone}@errandsbuddy.com`,
-      reference,
-      metadata: {
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        phone: order.customer.phone,
-      },
-      callback_url: `${this.config.get('APP_URL')}/payments/verify/${reference}`,
-    });
+  const response = await this.callPaystack('POST', '/transaction/initialize', {
+  amount: amountKobo,
+  email: `${order.customer.phone}@errandsbuddy.com`,
+  reference,
+  channels: ['card', 'bank_transfer', 'ussd'], // customer picks on Paystack's page
+  metadata: {
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    phone: order.customer.phone,
+  },
+      callback_url: `${this.config.get('APP_URL')}/api/v1/payments/verify/${reference}`,
+});
 
     const { authorization_url, access_code } = response.data;
 
@@ -105,15 +106,49 @@ export class PaymentsService {
 
     if (status !== 'success') return;
 
+    await this.confirmPaystackPayment(reference);
+  }
+
+   async verifyAndConfirmPaystack(reference: string): Promise<{
+    status: 'PAID' | 'PENDING' | 'FAILED';
+    orderNumber?: string;
+  }> {
+    const payment = await this.paymentsRepository.findByPaystackRef(reference);
+    if (!payment) {
+      throw new NotFoundException(`No payment found for reference ${reference}`);
+    }
+
+    const order = await this.ordersService.findOne(payment.orderId);
+
+    if (payment.status === 'CONFIRMED') {
+      return { status: 'PAID', orderNumber: order.orderNumber };
+    }
+
+    const result = await this.callPaystack('GET', `/transaction/verify/${reference}`);
+    const paystackStatus = result?.data?.status;
+
+    if (paystackStatus === 'success') {
+      await this.confirmPaystackPayment(reference);
+      return { status: 'PAID', orderNumber: order.orderNumber };
+    }
+
+    if (paystackStatus === 'failed' || paystackStatus === 'abandoned') {
+      return { status: 'FAILED', orderNumber: order.orderNumber };
+    }
+
+    return { status: 'PENDING', orderNumber: order.orderNumber };
+  }
+
+   private async confirmPaystackPayment(reference: string): Promise<void> {
     const payment = await this.paymentsRepository.findByPaystackRef(reference);
 
     if (!payment) {
-      this.logger.warn(`Paystack webhook: payment not found for ref ${reference}`);
+      this.logger.warn(`confirmPaystackPayment: payment not found for ref ${reference}`);
       return;
     }
 
     if (payment.status === 'CONFIRMED') {
-      this.logger.log(`Paystack webhook: payment ${reference} already confirmed — skipping`);
+      this.logger.log(`confirmPaystackPayment: ${reference} already confirmed — skipping`);
       return;
     }
 
@@ -127,7 +162,6 @@ export class PaymentsService {
     this.eventEmitter.emit(EVENTS.PAYMENT_CONFIRMED, { payment });
     this.logger.log(`Payment confirmed: ${reference}`);
   }
-
   // ----------------------------------------------------------------
   // Admin manually confirms bank transfer
   //

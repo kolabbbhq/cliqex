@@ -16,6 +16,7 @@ import { FlowServiceDef, FlowAreaDef } from './flows/flow-config.types';
 import { PrismaService } from '@common/prisma/prisma.service';
 import { ReviewsService } from '@modules/reviews/reviews.service';
 import { BusinessHoursService } from '@modules/business/business-hours.service';
+import { PaymentsService } from '@modules/payments/payments.service';
 
 import {
   ParsedInboundMessage,
@@ -49,6 +50,8 @@ export class WhatsappService {
     private readonly prisma: PrismaService,
      private readonly reviewsService: ReviewsService,
      private readonly businessHoursService: BusinessHoursService,
+          private readonly paymentsService: PaymentsService,
+
 
 
   ) {
@@ -236,8 +239,11 @@ export class WhatsappService {
     if (payload === 'CANCEL_ORDER' && activeOrderId) {
       return this.handleCancelOrder(phone, activeOrderId, token);
     }
-    if (payload === 'PAY_TRANSFER' && activeOrderId) {
+     if (payload === 'PAY_TRANSFER' && activeOrderId) {
       return this.handlePayTransfer(phone, activeOrderId, token);
+    }
+    if (payload === 'PAY_PAYSTACK' && activeOrderId) {
+      return this.handlePayPaystack(phone, activeOrderId, token);
     }
 if (payload?.startsWith('RATING_')) {
   const deliveredOrder = await this.findLastDeliveredOrder(customer.id);
@@ -283,6 +289,40 @@ if (msg.type === 'text' && msg.text) {
     }
 
     await this.sendFallback(phone, token);
+  }
+  private async handlePayPaystack(phone: string, orderId: string, token: string): Promise<void> {
+    try {
+      const { authorizationUrl, orderNumber, amount } = await this.buildPaystackLinkInfo(orderId);
+
+      await this.sendText({
+        to: phone,
+        message:
+          `Tap the link below to pay 👇\n\n` +
+          `${authorizationUrl}\n\n` +
+          `Choose card, bank transfer, or USSD on the next screen. ` +
+          `Link expires in 24 hours. Your receipt arrives automatically once paid.`,
+        token,
+      });
+    } catch (err: any) {
+      this.logger.error(`handlePayPaystack failed for order ${orderId}: ${err.message}`);
+      await this.sendText({
+        to: phone,
+        message:
+          `Sorry, we couldn't generate a payment link right now. ` +
+          `Please try bank transfer instead or try again shortly.`,
+        token,
+      });
+    }
+  }
+
+  private async buildPaystackLinkInfo(orderId: string) {
+    const result = await this.paymentsService.initiatePaystack(orderId);
+    const order = await this.ordersService.findOne(orderId);
+    return {
+      authorizationUrl: result.authorizationUrl,
+      orderNumber: order.orderNumber,
+      amount: Number(order.total),
+    };
   }
 
   // ----------------------------------------------------------------

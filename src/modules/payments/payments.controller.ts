@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Res,
   Post,
   Body,
   Param,
@@ -11,10 +12,11 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { Request } from 'express';
+import { Request, Response } from 'express';
 import { JwtGuard } from '@modules/auth/guards/auth.guards';
 import { Public } from '@common/decorators/public.decorator';
 import { PaymentsService } from './payments.service';
+
 import {
   ListPaymentsDto,
   ConfirmBankTransferDto,
@@ -38,8 +40,84 @@ export class PaymentsController {
     @Req() req: Request,
     @Headers('x-paystack-signature') signature: string,
   ) {
-    await this.paymentsService.handlePaystackWebhook(req.body as Buffer, signature);
+await this.paymentsService.handlePaystackWebhook((req as any).rawBody as Buffer, signature);
     return { received: true };
+  }
+
+  @Public()
+  @Get('verify/:reference')
+  @HttpCode(HttpStatus.OK)
+  async verifyPaystack(
+    @Param('reference') reference: string,
+    @Res() res: Response,
+  ) {
+    let result: { status: 'PAID' | 'PENDING' | 'FAILED'; orderNumber?: string };
+
+    try {
+      result = await this.paymentsService.verifyAndConfirmPaystack(reference);
+    } catch {
+      result = { status: 'FAILED' };
+    }
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(this.renderVerifyPage(result));
+  }
+
+  private renderVerifyPage(result: {
+    status: 'PAID' | 'PENDING' | 'FAILED';
+    orderNumber?: string;
+  }): string {
+    const copy = {
+      PAID: {
+        emoji: '✅',
+        color: '#1a8a5e',
+        title: 'Payment successful!',
+        message: result.orderNumber
+          ? `Your order <strong>${result.orderNumber}</strong> is confirmed. You can close this tab and go back to WhatsApp — we've sent you a confirmation there.`
+          : `Your payment is confirmed. You can close this tab and go back to WhatsApp.`,
+      },
+      PENDING: {
+        emoji: '⏳',
+        color: '#c98a1d',
+        title: 'Payment processing',
+        message: `We're still confirming this with Paystack. Go back to WhatsApp — we'll message you there the moment it's confirmed.`,
+      },
+      FAILED: {
+        emoji: '❌',
+        color: '#c0392b',
+        title: 'Payment not completed',
+        message: `We couldn't confirm this payment. Go back to WhatsApp and try again, or choose bank transfer instead.`,
+      },
+    }[result.status];
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${copy.title}</title>
+  <style>
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+      background:#f5f6f8; display:flex; align-items:center; justify-content:center;
+      min-height:100vh; padding:24px; box-sizing:border-box; }
+    .card { background:#fff; border-radius:16px; padding:40px 28px; max-width:380px; width:100%;
+      text-align:center; box-shadow:0 4px 24px rgba(0,0,0,0.08); }
+    .emoji { font-size:48px; margin-bottom:16px; }
+    h1 { font-size:20px; color:${copy.color}; margin:0 0 12px; }
+    p { font-size:15px; color:#444; line-height:1.5; margin:0 0 24px; }
+    a.btn { display:inline-block; background:#25D366; color:#fff; text-decoration:none;
+      padding:12px 28px; border-radius:999px; font-weight:600; font-size:15px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="emoji">${copy.emoji}</div>
+    <h1>${copy.title}</h1>
+    <p>${copy.message}</p>
+    <a class="btn" href="https://wa.me/">Return to WhatsApp</a>
+  </div>
+</body>
+</html>`;
   }
 
   @UseGuards(JwtGuard)
