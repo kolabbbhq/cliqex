@@ -8,6 +8,7 @@ import {
   Query,
   Headers,
   Req,
+  Logger,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -25,6 +26,8 @@ import {
 
 @Controller('payments')
 export class PaymentsController {
+    private readonly logger = new Logger(PaymentsController.name);
+
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @UseGuards(JwtGuard)
@@ -55,7 +58,8 @@ await this.paymentsService.handlePaystackWebhook((req as any).rawBody as Buffer,
 
     try {
       result = await this.paymentsService.verifyAndConfirmPaystack(reference);
-    } catch {
+    } catch (err: any) {
+      this.logger.error(`verifyPaystack failed for ${reference}: ${err.message}`);
       result = { status: 'FAILED' };
     }
 

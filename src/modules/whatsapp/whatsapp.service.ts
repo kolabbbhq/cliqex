@@ -292,16 +292,16 @@ if (msg.type === 'text' && msg.text) {
   }
   private async handlePayPaystack(phone: string, orderId: string, token: string): Promise<void> {
     try {
-      const { authorizationUrl, orderNumber, amount } = await this.buildPaystackLinkInfo(orderId);
+      const { authorizationUrl, orderNumber, amount, phoneId } =
+        await this.buildPaystackLinkInfo(orderId);
 
-      await this.sendText({
+      await this.sendPaystackCta({
         to: phone,
-        message:
-          `Tap the link below to pay 👇\n\n` +
-          `${authorizationUrl}\n\n` +
-          `Choose card, bank transfer, or USSD on the next screen. ` +
-          `Link expires in 24 hours. Your receipt arrives automatically once paid.`,
+        orderNumber,
+        amount,
+        url: authorizationUrl,
         token,
+        phoneId,
       });
     } catch (err: any) {
       this.logger.error(`handlePayPaystack failed for order ${orderId}: ${err.message}`);
@@ -315,14 +315,63 @@ if (msg.type === 'text' && msg.text) {
     }
   }
 
-  private async buildPaystackLinkInfo(orderId: string) {
+
+ private async buildPaystackLinkInfo(orderId: string) {
     const result = await this.paymentsService.initiatePaystack(orderId);
     const order = await this.ordersService.findOne(orderId);
+    const business = await this.businessService.getById(order.businessId);
     return {
       authorizationUrl: result.authorizationUrl,
       orderNumber: order.orderNumber,
       amount: Number(order.total),
+      phoneId: business.whatsappPhoneId!,
     };
+  }
+
+  private async sendPaystackCta(params: {
+    to: string;
+    orderNumber: string;
+    amount: number;
+    url: string;
+    token: string;
+    phoneId: string;
+  }): Promise<void> {
+    const apiUrl = `https://graph.facebook.com/${this.version}/${params.phoneId}/messages`;
+
+    await axios.post(
+      apiUrl,
+      {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: params.to,
+        type: 'interactive',
+        interactive: {
+          type: 'cta_url',
+          body: {
+            text:
+              `Tap below to pay *₦${params.amount.toLocaleString()}* for order *${params.orderNumber}* 👇\n\n` +
+              `Choose card, bank transfer, or USSD on the next screen. Link expires in 24 hours. ` +
+              `Your receipt arrives automatically once paid.`,
+          },
+          footer: { text: 'Powered by Cliqex' },
+          action: {
+            name: 'cta_url',
+            parameters: {
+              display_text: 'Pay Now',
+              url: params.url,
+            },
+          },
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${params.token}`,
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+
+    await this.logOutbound(params.to, undefined, `[paystack cta:${params.orderNumber}]`);
   }
 
   // ----------------------------------------------------------------
