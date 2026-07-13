@@ -64,29 +64,12 @@ async upsertServiceConfig(
     vatPercent?: number;
   },
 ): Promise<ServiceConfig> {
-  const existing = await this.prisma.serviceConfig.findUnique({ where: { businessId } });
-
-  let mergedServices = data.services;
-  if (data.services && existing?.services) {
-    const existingArr = existing.services as any[];
-    mergedServices = data.services.map((incoming) => {
-      const prior = existingArr.find((e) => e.id === incoming.id);
-      return { ...prior, ...incoming };
-    });
-  }
-
-  const finalData = {
-    ...data,
-    ...(mergedServices && { services: mergedServices }),
-  };
-
   return this.prisma.serviceConfig.upsert({
     where: { businessId },
-    create: { businessId, ...finalData },
-    update: { ...finalData },
+    create: { businessId, ...data },
+    update: { ...data },
   });
 }
-
 
   async getServiceConfig(businessId: string): Promise<ServiceConfig | null> {
     return this.prisma.serviceConfig.findUnique({ where: { businessId } });

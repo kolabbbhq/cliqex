@@ -203,12 +203,22 @@ async updateServiceConfig(data: {
   const businessId = this.tenant.get();
 
   if (data.services) {
-    const invalid = data.services.filter((s) => !s.id || typeof s.label !== 'string' || !s.label.trim());
+    const existing = await this.businessRepo.getServiceConfig(businessId);
+    const existingArr = (existing?.services as any[]) ?? [];
+
+    const merged = data.services.map((incoming) => {
+      const prior = existingArr.find((e) => e.id === incoming.id);
+      return { ...prior, ...incoming };
+    });
+
+    const invalid = merged.filter((s) => !s.id || typeof s.label !== 'string' || !s.label.trim());
     if (invalid.length) {
       throw new BadRequestException(
         `Cannot save service(s) missing a valid 'label': ${invalid.map((s) => s.id ?? '(no id)').join(', ')}`,
       );
     }
+
+    data = { ...data, services: merged };
   }
 
   return this.businessRepo.upsertServiceConfig(businessId, data);
