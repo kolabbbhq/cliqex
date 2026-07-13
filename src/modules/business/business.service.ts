@@ -192,17 +192,27 @@ async connectWhatsApp(data: {
   return updated;
 }
 
-  async updateServiceConfig(data: {
-    services?: any[];
-    areas?: any[];
-    welcomeText?: string;
-    headerImageUrl?: string;
-    serviceChargePercent?: number;
-    vatPercent?: number;
-  }): Promise<ServiceConfig> {
-    const businessId = this.tenant.get();
-    return this.businessRepo.upsertServiceConfig(businessId, data);
+async updateServiceConfig(data: {
+  services?: any[];
+  areas?: any[];
+  welcomeText?: string;
+  headerImageUrl?: string;
+  serviceChargePercent?: number;
+  vatPercent?: number;
+}): Promise<ServiceConfig> {
+  const businessId = this.tenant.get();
+
+  if (data.services) {
+    const invalid = data.services.filter((s) => !s.id || typeof s.label !== 'string' || !s.label.trim());
+    if (invalid.length) {
+      throw new BadRequestException(
+        `Cannot save service(s) missing a valid 'label': ${invalid.map((s) => s.id ?? '(no id)').join(', ')}`,
+      );
+    }
   }
+
+  return this.businessRepo.upsertServiceConfig(businessId, data);
+}
 
   async getServiceConfig(businessId: string): Promise<ServiceConfig | null> {
     return this.businessRepo.getServiceConfig(businessId);

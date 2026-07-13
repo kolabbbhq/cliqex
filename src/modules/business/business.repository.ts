@@ -53,24 +53,39 @@ export class BusinessRepository {
     return this.prisma.business.update({ where: { id }, data: data as any });
   }
 
+async upsertServiceConfig(
+  businessId: string,
+  data: {
+    services?: any[];
+    areas?: any[];
+    welcomeText?: string;
+    headerImageUrl?: string;
+    serviceChargePercent?: number;
+    vatPercent?: number;
+  },
+): Promise<ServiceConfig> {
+  const existing = await this.prisma.serviceConfig.findUnique({ where: { businessId } });
 
-  async upsertServiceConfig(
-    businessId: string,
-    data: {
-      services?: any[];
-      areas?: any[];
-      welcomeText?: string;
-      headerImageUrl?: string;
-      serviceChargePercent?: number;
-      vatPercent?: number;
-    },
-  ): Promise<ServiceConfig> {
-    return this.prisma.serviceConfig.upsert({
-      where: { businessId },
-      create: { businessId, ...data },
-      update: { ...data },
+  let mergedServices = data.services;
+  if (data.services && existing?.services) {
+    const existingArr = existing.services as any[];
+    mergedServices = data.services.map((incoming) => {
+      const prior = existingArr.find((e) => e.id === incoming.id);
+      return { ...prior, ...incoming };
     });
   }
+
+  const finalData = {
+    ...data,
+    ...(mergedServices && { services: mergedServices }),
+  };
+
+  return this.prisma.serviceConfig.upsert({
+    where: { businessId },
+    create: { businessId, ...finalData },
+    update: { ...finalData },
+  });
+}
 
 
   async getServiceConfig(businessId: string): Promise<ServiceConfig | null> {
