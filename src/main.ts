@@ -11,9 +11,9 @@ async function bootstrap() {
   app.useGlobalPipes(new ZodValidationPipe());
 
  app.enableCors({
-  origin: '*',
+  origin: [/\.cliqex\.online$/, 'https://cliqex.online'],
   methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-  credentials: false,
+  credentials: true,
 });
 
   app.setGlobalPrefix('api/v1');

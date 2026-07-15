@@ -26,6 +26,8 @@ export interface AuthenticatedAdmin {
 export interface LoginResponse {
   admin:  AuthenticatedAdmin;
   tokens: TokenPair;
+   business: { slug: string } | null;
+
 }
 
 export interface RefreshResponse {

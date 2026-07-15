@@ -18,6 +18,12 @@ export class AuthRepository {
       where: { id },
     });
   }
+  async findBusinessSlug(businessId: string): Promise<{ slug: string } | null> {
+  return this.prisma.business.findUnique({
+    where: { id: businessId },
+    select: { slug: true },
+  });
+}
 
   async create(data: CreateAdminInput & { passwordHash: string }): Promise<Admin> {
     return this.prisma.admin.create({

@@ -49,16 +49,20 @@ export class AuthService {
   }
 
   async login(admin: Admin): Promise<LoginResponse> {
-    const tokens = this.generateTokenPair(admin);
+  const tokens = this.generateTokenPair(admin);
 
-    this.logger.log(`Admin logged in: ${admin.email} (${admin.role})`);
+  const business = admin.businessId
+  ? await this.authRepository.findBusinessSlug(admin.businessId)
+  : null;
 
-    return {
-      admin: this.sanitizeAdmin(admin),
-      tokens,
-    };
-  }
+  this.logger.log(`Admin logged in: ${admin.email} (${admin.role})`);
 
+  return {
+    admin: this.sanitizeAdmin(admin),
+    tokens,
+    business: business ? { slug: business.slug } : null,
+  };
+}
   async refresh(refreshToken: string): Promise<RefreshResponse> {
     let payload: JwtPayload;
 
