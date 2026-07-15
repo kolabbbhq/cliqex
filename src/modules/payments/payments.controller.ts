@@ -31,6 +31,15 @@ export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @UseGuards(JwtGuard)
+@Get('export')
+async exportCsv(@Query() query: any, @Res() res: Response) {
+  const csv = await this.paymentsService.exportCsv(query);
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="payments.csv"');
+  res.send(csv);
+}
+
+  @UseGuards(JwtGuard)
   @Post(':orderId/paystack/initiate')
   async initiatePaystack(@Param('orderId') orderId: string) {
     return this.paymentsService.initiatePaystack(orderId);

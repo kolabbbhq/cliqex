@@ -22,6 +22,7 @@ import { ReviewsModule } from '@modules/reviews/reviews.module';
 import { AnalyticsModule } from '@modules/analytics/analytics.module';
 import { MenuModule } from '@modules/menu/menu.module';
 import { PublicModule } from '@modules/public/public.module';
+import { GatewayModule } from '@modules/gateway/gateway.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { PublicModule } from '@modules/public/public.module';
     AnalyticsModule,
     MenuModule,
     PublicModule,
+    GatewayModule,
     NotificationsModule,
   ],
 })

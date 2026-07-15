@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import { Customer } from '@prisma/client';
+import { Customer, Prisma } from '@prisma/client';   // ← Prisma added
 import {
   CustomerWithStats,
   FindOrCreateResult,
@@ -97,25 +97,33 @@ export class CustomersRepository {
   }
 
   async findAll(input: ListCustomersInput): Promise<PaginatedCustomers> {
-    const businessId = this.tenant.get();
-    const { page, limit } = input;
-    const skip = (page - 1) * limit;
+  const businessId = this.tenant.get();
+  const { page, limit, search, startDate, endDate } = input;
+  const skip = (page - 1) * limit;
 
-    const [raw, total] = await this.prisma.$transaction([
-      this.prisma.customer.findMany({
-        where: { businessId },
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-      }),
-      this.prisma.customer.count({ where: { businessId } }),
-    ]);
+  const where: Prisma.CustomerWhereInput = {
+    businessId,
+    ...((startDate || endDate) && {
+      createdAt: {
+        ...(startDate && { gte: startDate }),
+        ...(endDate && { lte: endDate }),
+      },
+    }),
+    ...(search && {
+      OR: [
+        { name: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+      ],
+    }),
+  };
 
-    const data = raw.map((c) => ({
-      ...c,
-      totalSpend: c.totalSpend.toNumber(),
-    }));
+  const [raw, total] = await this.prisma.$transaction([
+    this.prisma.customer.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
+    this.prisma.customer.count({ where }),
+  ]);
 
-    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
-  }
+  const data = raw.map((c) => ({ ...c, totalSpend: c.totalSpend.toNumber() }));
+
+  return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+}
 }

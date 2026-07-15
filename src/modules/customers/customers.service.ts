@@ -47,6 +47,63 @@ export class CustomersService {
     }
     return customer;
   }
+  async exportCsv(query: {
+  isVip?: string | boolean;
+  isBlocked?: string | boolean;
+  startDate?: string;
+  endDate?: string;
+  search?: string;
+}): Promise<string> {
+  const businessId = this.tenant.get();
+  const where: any = { businessId };
+
+  if (query.isBlocked !== undefined) {
+    where.isBlocked = query.isBlocked === true || query.isBlocked === 'true';
+  }
+  if (query.isVip === true || query.isVip === 'true') {
+    where.totalOrders = { gte: 5 };
+  }
+  if (query.startDate || query.endDate) {
+    where.createdAt = {};
+    if (query.startDate) where.createdAt.gte = new Date(query.startDate);
+    if (query.endDate) where.createdAt.lte = new Date(query.endDate);
+  }
+  if (query.search) {
+    where.OR = [
+      { name: { contains: query.search, mode: 'insensitive' } },
+      { phone: { contains: query.search, mode: 'insensitive' } },
+    ];
+  }
+
+  const customers = await this.prisma.customer.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+  });
+
+  const esc = (val: unknown): string => {
+    const str = String(val ?? '');
+    return /[,"\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+
+  const rows = customers.map((c) =>
+    [
+      c.name ?? '',
+      c.phone,
+      c.totalOrders,
+      c.totalSpend.toString(),
+      c.totalOrders >= 5,
+      c.isBlocked,
+      c.createdAt.toISOString(),
+    ]
+      .map(esc)
+      .join(','),
+  );
+
+  return [
+    'Name,Phone,Total Orders,Total Spend,VIP,Blocked,Joined Date',
+    ...rows,
+  ].join('\n');
+}
 
   async update(id: string, data: UpdateCustomerInput): Promise<Customer> {
     const exists = await this.customersRepository.findById(id);

@@ -9,6 +9,7 @@ import { EmailService } from '@modules/email/email.service';
 import { Templates } from '@modules/whatsapp/templates/messages.template';
 import { EVENTS } from '@common/events/events.constants';
 import { TenantContext } from '@common/tenant/tenant-context.service';
+import { AppGateway } from '@modules/gateway/app.gateway';
 
 @Injectable()
 export class NotificationsService {
@@ -22,10 +23,11 @@ export class NotificationsService {
     private readonly tenantContext: TenantContext,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
+    private readonly gateway: AppGateway,
   ) {}
 
   // ----------------------------------------------------------------
-  // ORDER_CREATED → email all active admins
+  // ORDER_CREATED → email all active admins + push order:new via WS
   // ----------------------------------------------------------------
   @OnEvent(EVENTS.ORDER_CREATED)
   async onOrderCreated(payload: { order: any }): Promise<void> {
@@ -47,41 +49,49 @@ export class NotificationsService {
       });
 
       const adminEmails = admins.map((a) => a.email);
-      if (!adminEmails.length) return;
 
-      const crmUrl = this.config.get<string>('CRM_URL', 'https://your-crm.vercel.app');
-      const areaLabel = (order.flowData as any)?.areaLabel ?? null;
-      const serviceLabel = (order.flowData as any)?.serviceLabel ?? order.serviceType;
+      if (adminEmails.length) {
+        const crmUrl = this.config.get<string>('CRM_URL', 'https://your-crm.vercel.app');
+        const areaLabel = (order.flowData as any)?.areaLabel ?? null;
+        const serviceLabel = (order.flowData as any)?.serviceLabel ?? order.serviceType;
 
-      // ✅ sendNewOrderAlert now returns true/false — only log success
-      // if the email actually went out, instead of assuming it did.
-      const sent = await this.emailService.sendNewOrderAlert({
-        adminEmails,
+        const sent = await this.emailService.sendNewOrderAlert({
+          adminEmails,
+          orderNumber: order.orderNumber,
+          customerName: order.customer.name,
+          customerPhone: order.customer.phone,
+          serviceType: order.serviceType,
+          serviceLabel,
+          items: order.items,
+          areaLabel,
+          businessName: order.business.name,
+          crmUrl,
+        });
+
+        if (sent) {
+          this.logger.log(`[NOTIFY] New order email sent for ${order.orderNumber}`);
+        } else {
+          this.logger.warn(
+            `[NOTIFY] New order email FAILED for ${order.orderNumber} — see EmailService logs above for the reason`,
+          );
+        }
+      }
+
+      // ── Real-time push to CRM dashboard ─────────────────────────
+      this.gateway.emitToBusinessAdmins(order.businessId, 'order:new', {
+        orderId: order.id,
         orderNumber: order.orderNumber,
         customerName: order.customer.name,
-        customerPhone: order.customer.phone,
         serviceType: order.serviceType,
-        serviceLabel,
-        items: order.items,
-        areaLabel,
-        businessName: order.business.name,
-        crmUrl,
+        createdAt: order.createdAt,
       });
-
-      if (sent) {
-        this.logger.log(`[NOTIFY] New order email sent for ${order.orderNumber}`);
-      } else {
-        this.logger.warn(
-          `[NOTIFY] New order email FAILED for ${order.orderNumber} — see EmailService logs above for the reason`,
-        );
-      }
     } catch (err: any) {
       this.logger.error(`[NOTIFY] onOrderCreated email failed: ${err.message}`);
     }
   }
 
   // ----------------------------------------------------------------
-  // ORDER_PAID → generate & send PDF receipt ONLY
+  // ORDER_PAID → generate & send PDF receipt + push payment:confirmed via WS
   // No text message here — that fires on ORDER_PROCESSING below
   // ----------------------------------------------------------------
   @OnEvent(EVENTS.ORDER_PAID)
@@ -167,6 +177,14 @@ export class NotificationsService {
       this.logger.log(
         `[NOTIFY] Receipt sent to ${order.customer.phone} for order ${order.orderNumber}`,
       );
+
+      // ── Real-time push to CRM dashboard ─────────────────────────
+      this.gateway.emitToBusinessAdmins(order.businessId, 'payment:confirmed', {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        customerName: order.customer.name,
+        amount: Number(order.total),
+      });
     } catch (err: any) {
       this.logger.error(
         `[NOTIFY] onOrderPaid failed for ${payload.order.orderNumber}: ${err.message}`,
@@ -199,7 +217,6 @@ export class NotificationsService {
         ? { token: order.business.whatsappToken }
         : {};
 
-      // Message 1: Payment confirmed
       const confirmedTemplate = Templates.paymentConfirmed(
         payload.order.orderNumber,
         payload.order.serviceType,
@@ -210,7 +227,6 @@ export class NotificationsService {
         ...token,
       });
 
-      // Message 2: Order being prepared
       const preparedTemplate = Templates.orderBeingPrepared();
       await this.whatsappService.sendText({
         to: order.customer.phone,

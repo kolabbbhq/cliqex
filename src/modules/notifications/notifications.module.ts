@@ -1,3 +1,4 @@
+// notifications.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { NotificationsService } from './notifications.service';
@@ -7,6 +8,7 @@ import { UploadModule } from '@modules/upload/upload.module';
 import { PrismaModule } from '@common/prisma/prisma.module';
 import { TenantModule } from '@common/tenant/tenant.module';
 import { EmailModule } from '@modules/email/email.module';
+import { GatewayModule } from '@modules/gateway/gateway.module'; // ← ADD
 
 @Module({
   imports: [
@@ -17,6 +19,7 @@ import { EmailModule } from '@modules/email/email.module';
     UploadModule,
     PrismaModule,
     EmailModule,
+    GatewayModule, // ← ADD
   ],
   providers: [NotificationsService],
 })

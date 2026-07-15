@@ -159,7 +159,7 @@ export interface SendDocumentPayload {
   filename: string;      // e.g. "Receipt-EB-0042.pdf"
   caption?: string;      // e.g. "Your receipt for Order EB-0042 🧾"
   token: string;         // business WhatsApp token
-  phoneId: string;       // business WhatsApp Phone Number ID
+  phoneId?: string;       // business WhatsApp Phone Number ID
 }
 
 // ----------------------------------------------------------------

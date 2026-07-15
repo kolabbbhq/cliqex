@@ -300,4 +300,40 @@ export class AnalyticsService {
       recentOrders: recentOrdersMapped,
     };
   }
+  async getNotificationCounts() {
+  const businessId = this.tenant.get();
+
+  const [newOrders, pendingPayments, activeOrders] = await Promise.all([
+    this.prisma.order.count({
+      where: { businessId, status: 'NEW' },
+    }),
+    this.prisma.payment.count({
+      where: { businessId, status: 'PENDING' },
+    }),
+    this.prisma.order.findMany({
+      where: {
+        businessId,
+        status: { notIn: ['DELIVERED', 'CANCELLED'] },
+      },
+      select: {
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { direction: true },
+        },
+      },
+    }),
+  ]);
+
+  const unreadMessages = activeOrders.filter(
+    (o) => o.messages[0]?.direction === 'INBOUND',
+  ).length;
+
+  return {
+    newOrders,
+    pendingPayments,
+    unreadMessages,
+    total: newOrders + pendingPayments + unreadMessages,
+  };
+}
 }

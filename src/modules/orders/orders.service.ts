@@ -282,17 +282,20 @@ await this.ordersRepository.updatePricing(
       );
     }
   }
+  async exportCsv(query: ListOrdersInput): Promise<string> {
+  return this.ordersRepository.exportCsv(query);
+}
 
   // Order number is per-business using the business's orderPrefix: MK-0001, EB-0002 etc
-  private async generateOrderNumber(businessId: string): Promise<string> {
-    const [count, business] = await Promise.all([
-      this.prisma.order.count({ where: { businessId } }),
-      this.prisma.business.findUnique({
-        where: { id: businessId },
-        select: { orderPrefix: true },
-      }),
-    ]);
-    const prefix = business?.orderPrefix ?? 'EB';
-    return `${prefix}-${String(count + 1).padStart(4, '0')}`;
-  }
+  // private async generateOrderNumber(businessId: string): Promise<string> {
+  //   const [count, business] = await Promise.all([
+  //     this.prisma.order.count({ where: { businessId } }),
+  //     this.prisma.business.findUnique({
+  //       where: { id: businessId },
+  //       select: { orderPrefix: true },
+  //     }),
+  //   ]);
+  //   const prefix = business?.orderPrefix ?? 'EB';
+  //   return `${prefix}-${String(count + 1).padStart(4, '0')}`;
+  // }
 }

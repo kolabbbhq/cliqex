@@ -51,26 +51,60 @@ export class PaymentsRepository {
       },
     });
   }
+  async findAllForExport(filters: {
+  status?: string;
+  method?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  const businessId = this.tenant.get();
+  const where: any = { businessId };
+
+  if (filters.status) where.status = filters.status;
+  if (filters.method) where.method = filters.method;
+  if (filters.startDate || filters.endDate) {
+    where.createdAt = {};
+    if (filters.startDate) where.createdAt.gte = new Date(filters.startDate);
+    if (filters.endDate) where.createdAt.lte = new Date(filters.endDate);
+  }
+
+  return this.prisma.payment.findMany({
+    where,
+    include: {
+      customer: { select: { name: true, phone: true } },
+      order: { select: { orderNumber: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}
 
  async findAll(input: ListPaymentsInput): Promise<PaginatedPayments> {
   const businessId = this.tenant.get();
-  const { page, limit } = input;
+  const { page, limit, status, method, startDate, endDate } = input;
   const skip = (page - 1) * limit;
+
+  const where: any = { businessId };
+  if (status) where.status = status;
+  if (method) where.method = method;
+  if (startDate || endDate) {
+    where.createdAt = {};
+    if (startDate) where.createdAt.gte = new Date(startDate);
+    if (endDate) where.createdAt.lte = new Date(endDate);
+  }
 
   const [raw, total] = await this.prisma.$transaction([
     this.prisma.payment.findMany({
-      where:   { businessId },
-      include: { 
+      where,
+      include: {
         customer: { select: { name: true, phone: true } },
-        order:    { select: { orderNumber: true } },   // need orderNumber too
+        order: { select: { orderNumber: true } },
       },
       skip, take: limit,
       orderBy: { createdAt: 'desc' },
     }),
-    this.prisma.payment.count({ where: { businessId } }),
+    this.prisma.payment.count({ where }),
   ]);
 
-  // Fix: flatten nested customer/order into the PaymentView shape
   const data: PaymentView[] = raw.map(p => ({
     id:            p.id,
     orderId:       p.orderId,

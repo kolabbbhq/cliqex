@@ -17,6 +17,8 @@ import { PrismaService } from '@common/prisma/prisma.service';
 import { ReviewsService } from '@modules/reviews/reviews.service';
 import { BusinessHoursService } from '@modules/business/business-hours.service';
 import { PaymentsService } from '@modules/payments/payments.service';
+import { AppGateway } from '@modules/gateway/app.gateway'; // ← ADD
+
 
 import {
   ParsedInboundMessage,
@@ -51,6 +53,8 @@ export class WhatsappService {
      private readonly reviewsService: ReviewsService,
      private readonly businessHoursService: BusinessHoursService,
           private readonly paymentsService: PaymentsService,
+            private readonly gateway: AppGateway, // ← ADD
+
 
 
 
@@ -191,27 +195,40 @@ export class WhatsappService {
     }
 
     await this.whatsappRepository.saveMessage({
-      waMessageId: parsed.waMessageId,
-      customerId: customer.id,
-      orderId: activeOrder?.id,
-      direction: MessageDirection.INBOUND,
-      type: this.mapMessageType(parsed.type),
-      content: parsed.text ?? undefined,
-      mediaUrl,
-      buttonPayload: parsed.buttonPayload ?? undefined,
-    });
+  waMessageId: parsed.waMessageId,
+  customerId: customer.id,
+  orderId: activeOrder?.id,
+  direction: MessageDirection.INBOUND,
+  type: this.mapMessageType(parsed.type),
+  content: parsed.text ?? undefined,
+  mediaUrl,
+  buttonPayload: parsed.buttonPayload ?? undefined,
+});
 
-    // ✅ Pass mediaUrl through to routeMessage
-     await this.routeMessage(
-      parsed,
-      customer.id,
-      token,
-      businessId,
-      activeOrder?.id,
-      customer,
-      mediaUrl,
-      isNew,
-    );
+// ── Real-time push to CRM dashboard ─────────────────────────
+this.gateway.emitToBusinessAdmins(businessId, 'message:new', {
+  customerId: customer.id,
+  customerName: customer.name ?? parsed.contactName ?? null,
+  orderId: activeOrder?.id ?? null,
+  orderNumber: activeOrder?.orderNumber ?? null,
+  direction: 'INBOUND',
+  type: this.mapMessageType(parsed.type),
+  content: parsed.text ?? (mediaUrl ? '[media]' : null),
+  mediaUrl,
+  createdAt: new Date(),
+});
+
+// ✅ Pass mediaUrl through to routeMessage
+ await this.routeMessage(
+  parsed,
+  customer.id,
+  token,
+  businessId,
+  activeOrder?.id,
+  customer,
+  mediaUrl,
+  isNew,
+);
   }
   // ----------------------------------------------------------------
   // routeMessage
@@ -826,11 +843,12 @@ private async handleReviewComment(
         },
       );
 
-      await this.logOutbound(
-        params.to,
-        result.data?.messages?.[0]?.id,
-        `[document:${params.filename}]`,
-      );
+     await this.logOutbound(
+  params.to,
+  result.data?.messages?.[0]?.id,
+  params.caption ?? params.filename,
+  params.documentUrl,   
+);
 
       this.logger.log(`Document sent to ${params.to}: ${params.filename}`);
     } catch (error: any) {
@@ -1187,27 +1205,29 @@ private async handleReviewComment(
   }
 
   private async logOutbound(
-    phone: string,
-    waMessageId: string | undefined,
-    content: string,
-  ): Promise<void> {
-    try {
-      const { customer } = await this.customersService.findOrCreate(phone);
-      const activeOrder = await this.ordersService.findLatestActive(customer.id);
-      await this.whatsappRepository.saveMessage({
-        waMessageId:
-          waMessageId ??
-          `out-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        customerId: customer.id,
-        orderId: activeOrder?.id,
-        direction: MessageDirection.OUTBOUND,
-        type: MessageType.TEXT,
-        content,
-      });
-    } catch (err: any) {
-      this.logger.error(`Failed to log outbound message: ${err.message}`);
-    }
+  phone: string,
+  waMessageId: string | undefined,
+  content: string,
+  mediaUrl?: string,          // ← ADD THIS
+): Promise<void> {
+  try {
+    const { customer } = await this.customersService.findOrCreate(phone);
+    const activeOrder = await this.ordersService.findLatestActive(customer.id);
+    await this.whatsappRepository.saveMessage({
+      waMessageId:
+        waMessageId ??
+        `out-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      customerId: customer.id,
+      orderId: activeOrder?.id,
+      direction: MessageDirection.OUTBOUND,
+      type: MessageType.TEXT,
+      content,
+      mediaUrl,                // ← ADD THIS
+    });
+  } catch (err: any) {
+    this.logger.error(`Failed to log outbound message: ${err.message}`);
   }
+}
 
   private mapMessageType(type: string): MessageType {
     const map: Record<string, MessageType> = {

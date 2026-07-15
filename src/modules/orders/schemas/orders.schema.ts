@@ -10,6 +10,8 @@ export const ListOrdersSchema = z.object({
   serviceType: z.enum(['GROCERY', 'ERRAND', 'CLEANING']).optional(),
   customerId:  z.string().uuid().optional(),
   search:      z.string().trim().optional(),
+   startDate:   z.coerce.date().optional(),
+  endDate:     z.coerce.date().optional(),
 });
 
 export const UpdateOrderNotesSchema = z.object({

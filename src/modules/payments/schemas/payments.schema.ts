@@ -21,6 +21,8 @@ export const ListPaymentsSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   status: z.string().optional(),
   method: z.string().optional(),
+  startDate: z.string().optional(),   // ← ADD
+  endDate: z.string().optional(),     // ← ADD
 });
 
 export class ListPaymentsDto extends createZodDto(ListPaymentsSchema) {}

@@ -10,7 +10,7 @@
   },
   "scripts": {
     "postinstall": "prisma generate",
-  "build": "nest build",
+    "build": "nest build",
     "start": "node -r tsconfig-paths/register dist/main",
     "start:dev": "rm -f tsconfig.tsbuildinfo tsconfig.build.tsbuildinfo && nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -34,9 +34,9 @@
     "@nestjs/jwt": "^10.0.0",
     "@nestjs/passport": "^10.0.0",
     "@nestjs/platform-express": "^10.0.0",
-    "@nestjs/platform-socket.io": "^10.0.0",
+    "@nestjs/platform-socket.io": "^10.4.22",
     "@nestjs/swagger": "^7.0.0",
-    "@nestjs/websockets": "^10.0.0",
+    "@nestjs/websockets": "^10.4.22",
     "@prisma/client": "^5.0.0",
     "axios": "^1.4.0",
     "bcrypt": "^5.1.0",
@@ -55,6 +55,7 @@
     "pdfkit": "^0.19.1",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.0",
+    "socket.io": "^4.8.3",
     "uuid": "^9.0.1",
     "zod": "^3.25.76"
   },

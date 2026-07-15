@@ -11,4 +11,9 @@ export class AnalyticsController {
   getDashboard() {
 return this.analyticsService.getDashboardStats();
   }
+
+  @Get('notifications/count')
+getNotificationCounts() {
+  return this.analyticsService.getNotificationCounts();
+}
 }

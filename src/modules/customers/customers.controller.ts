@@ -1,5 +1,6 @@
 import {
   Get,
+  Res,
   Body,
   Post,
   Patch,
@@ -10,13 +11,13 @@ import {
   HttpStatus,
   Controller,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AdminRole } from '@prisma/client';
 import { Roles } from '@common/decorators/roles.decorator';
 import { JwtGuard } from '@modules/auth/guards/auth.guards';
 import { RolesGuard } from '@modules/auth/guards/roles.guard';
 import { CustomersService } from '@modules/customers/customers.service';
 import { UpdateCustomerDto, ListCustomersDto } from '@modules/customers/dto/customers.dto';
-
 @UseGuards(JwtGuard, RolesGuard)
 @Controller('customers')
 export class CustomersController {
@@ -26,6 +27,13 @@ export class CustomersController {
   async findAll(@Query() query: ListCustomersDto) {
     return this.customersService.findAll(query);
   }
+  @Get('export')
+async exportCsv(@Query() query: any, @Res() res: Response) {
+  const csv = await this.customersService.exportCsv(query);
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="customers.csv"');
+  res.send(csv);
+}
 
   @Get(':id')
   async findOne(@Param('id') id: string) {

@@ -12,6 +12,7 @@ import { EmailModule } from '@modules/email/email.module';
 import { PrismaModule } from '@common/prisma/prisma.module';
 import { PaymentsModule } from '@modules/payments/payments.module';
 import { ReviewsModule } from '@modules/reviews/reviews.module';
+import { GatewayModule } from '@modules/gateway/gateway.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { ReviewsModule } from '@modules/reviews/reviews.module';
     EmailModule,      // ← Task 10: email admins on payment proof
     PrismaModule, 
     ReviewsModule, 
+    GatewayModule,
         PaymentsModule,   // ← PaymentsService.initiatePaystack()
    // ← Task 10: query admins + upsert payment record
   ],

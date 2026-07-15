@@ -1,16 +1,10 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Patch,
-  Param,
-  Body,
-  Query,
-  UseGuards,
-  HttpCode,
-  HttpStatus,
+  Controller, Get, Post, Patch, Param, Body, Query, Res,
+  UseGuards, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Response } from 'express';
+
 
 import { OrdersService } from './orders.service';
 import { ReviewsService } from '@modules/reviews/reviews.service';
@@ -32,6 +26,15 @@ export class OrdersController {
       private readonly reviewsService: ReviewsService,
 
   ) {}
+
+@Get('export')
+@ApiOperation({ summary: 'Export orders as CSV' })
+async exportCsv(@Query() query: ListOrdersDto, @Res() res: Response) {
+  const csv = await this.ordersService.exportCsv(query);
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename="orders.csv"');
+  res.send(csv);
+}
 
   
 

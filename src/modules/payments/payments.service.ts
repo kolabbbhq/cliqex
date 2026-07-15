@@ -324,6 +324,38 @@ export class PaymentsService {
       throw new UnauthorizedException('Invalid webhook signature');
     }
   }
+  async exportCsv(filters: {
+  status?: string;
+  method?: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<string> {
+  const payments = await this.paymentsRepository.findAllForExport(filters);
+
+  const esc = (val: unknown): string => {
+    const str = String(val ?? '');
+    return /[,"\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+
+  const rows = payments.map((p) =>
+    [
+      p.order.orderNumber,
+      p.customer.name ?? '',
+      p.customer.phone,
+      p.amount.toString(),
+      p.method,
+      p.status,
+      p.createdAt.toISOString(),
+    ]
+      .map(esc)
+      .join(','),
+  );
+
+  return [
+    'Order Number,Customer Name,Customer Phone,Amount,Method,Status,Date',
+    ...rows,
+  ].join('\n');
+}
 
   private async callPaystack(
     method: 'GET' | 'POST',
