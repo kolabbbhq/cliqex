@@ -1,6 +1,7 @@
+
+import { AnalyticsService } from './analytics.service';
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { JwtGuard } from '@modules/auth/guards/auth.guards';
-import { AnalyticsService } from './analytics.service';
 
 @UseGuards(JwtGuard)
 @Controller('analytics')
@@ -9,11 +10,11 @@ export class AnalyticsController {
 
   @Get()
   getDashboard() {
-return this.analyticsService.getDashboardStats();
+    return this.analyticsService.getDashboardStats();
   }
 
   @Get('notifications/count')
-getNotificationCounts() {
-  return this.analyticsService.getNotificationCounts();
-}
+  getNotificationCounts() {
+    return this.analyticsService.getNotificationCounts();
+  }
 }

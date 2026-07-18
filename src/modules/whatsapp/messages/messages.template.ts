@@ -171,9 +171,9 @@ export const Templates = {
   // paymentOptions
   // ----------------------------------------------------------------
  paymentOptions: () => ({
-  body: `Great choice! How would you like to pay?`,
+  body: `Great choice! Proceed To Make Payment`,
   buttons: [
-    { id: 'PAY_PAYSTACK', title: '💳 Pay with Paystack' },
+    // { id: 'PAY_PAYSTACK', title: '💳 Pay with Paystack' },
     { id: 'PAY_TRANSFER', title: '🏦 Bank transfer' },
   ],
 }),
