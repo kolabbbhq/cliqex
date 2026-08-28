@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
-import { Transporter } from 'nodemailer';
+import { Resend } from 'resend';
 
 export interface PaymentProofAlertParams {
   adminEmails: string[];
@@ -30,49 +29,29 @@ export interface NewOrderAlertParams {
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly transporter: Transporter;
+  private readonly resend: Resend;
+  private readonly fromAddress: string;
 
   constructor(private readonly config: ConfigService) {
-    // ✅ Env vars are ALWAYS strings — ConfigService.get<number>() only
-    // casts the TypeScript type, it does NOT convert the runtime value.
-    // "465" === 465 is false in JS, which silently broke `secure` before.
-    const port = Number(this.config.get<string>('SMTP_PORT', '465'));
-    const user = this.config.get<string>('SMTP_USER');
-    const pass = this.config.get<string>('SMTP_PASS');
-
-    this.logger.log(
-      `[EMAIL] Initializing transporter — host=${this.config.get<string>('SMTP_HOST', 'smtp.gmail.com')}, port=${port}, user=${user}, passLength=${pass?.length ?? 0}`,
+    const apiKey = this.config.get<string>('RESEND_API_KEY');
+    this.fromAddress = this.config.get<string>(
+      'EMAIL_FROM',
+      'Cliqex Platform <notifications@cliqex.com>', // must be a verified domain in Resend
     );
 
-    if (!user || !pass) {
+    if (!apiKey) {
       this.logger.error(
-        '[EMAIL] SMTP_USER or SMTP_PASS is missing — outgoing email will fail. Check your .env.',
+        '[EMAIL] RESEND_API_KEY is missing — outgoing email will fail. Check your .env.',
       );
     }
 
-    this.transporter = nodemailer.createTransport({
-      host: this.config.get<string>('SMTP_HOST', 'smtp.gmail.com'),
-      port,
-      secure: port === 465, // true for 465 (implicit TLS), false for 587 (STARTTLS)
-      auth: { user, pass },
-    } as any);
+    this.resend = new Resend(apiKey);
   }
 
-  // ----------------------------------------------------------------
-  // sendPaymentProofAlert
-  // Returns true/false so callers (e.g. NotificationsService) know
-  // whether the send actually succeeded, instead of assuming success.
-  // ----------------------------------------------------------------
   async sendPaymentProofAlert(params: PaymentProofAlertParams): Promise<boolean> {
     const {
-      adminEmails,
-      orderNumber,
-      customerName,
-      customerPhone,
-      amount,
-      serviceType,
-      proofUrl,
-      businessName,
+      adminEmails, orderNumber, customerName, customerPhone,
+      amount, serviceType, proofUrl, businessName,
     } = params;
 
     if (!adminEmails.length) {
@@ -85,81 +64,40 @@ export class EmailService {
       maximumFractionDigits: 2,
     })}`;
 
-    const subject = `💳 Payment Proof Received — Order ${orderNumber} (${businessName})`;
-
-    const text = [
-      `A customer has submitted payment proof.`,
-      ``,
-      `Order:       ${orderNumber}`,
-      `Customer:    ${customerName ?? 'Unknown'}`,
-      `Phone:       ${customerPhone}`,
-      `Amount:      ${formattedAmount}`,
-      `Service:     ${serviceType}`,
-      `Business:    ${businessName}`,
-      ``,
-      `View Receipt Image: ${proofUrl}`,
-      ``,
-      `Log into your CRM to confirm the payment.`,
-      ``,
-      `— Cliqex Platform`,
-    ].join('\n');
-
     const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <style>
-    body { font-family: Arial, sans-serif; color: #222; background: #f5f5f5; margin: 0; padding: 0; }
-    .wrapper { max-width: 560px; margin: 32px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-    .header { background: #1a8a5e; padding: 24px 32px; }
-    .header h1 { margin: 0; font-size: 20px; color: #fff; }
-    .header p { margin: 4px 0 0; font-size: 13px; color: rgba(255,255,255,0.8); }
-    .body { padding: 28px 32px; }
-    .body p { margin: 0 0 16px; font-size: 14px; line-height: 1.5; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    td { padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #eee; }
-    td:first-child { font-weight: bold; color: #555; width: 110px; }
-    .cta { display: inline-block; margin: 4px 0 20px; padding: 10px 20px; background: #1a8a5e; color: #fff !important; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold; }
-    .footer { background: #f9f9f9; border-top: 1px solid #eee; padding: 16px 32px; font-size: 12px; color: #999; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="wrapper">
-    <div class="header">
-      <h1>💳 Payment Proof Received</h1>
-      <p>${businessName}</p>
-    </div>
-    <div class="body">
-      <p>A customer has submitted payment proof for the following order. Please review and confirm in your CRM.</p>
-      <table>
-        <tr><td>Order</td><td><strong>${orderNumber}</strong></td></tr>
-        <tr><td>Customer</td><td>${customerName ?? 'Unknown'}</td></tr>
-        <tr><td>Phone</td><td>${customerPhone}</td></tr>
-        <tr><td>Amount</td><td><strong>${formattedAmount}</strong></td></tr>
-        <tr><td>Service</td><td>${serviceType}</td></tr>
-        <tr><td>Business</td><td>${businessName}</td></tr>
-      </table>
-      <a href="${proofUrl}" class="cta">View Receipt Image →</a>
-      <p style="color:#777; font-size:13px;">Log into your CRM to confirm the payment and move this order to PAID.</p>
-    </div>
-    <div class="footer">— Cliqex Platform</div>
-  </div>
-</body>
-</html>
-    `.trim();
+      <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto;">
+        <div style="background:#1a8a5e; padding:24px 32px;">
+          <h1 style="margin:0; font-size:20px; color:#fff;">💳 Payment Proof Received</h1>
+          <p style="margin:4px 0 0; font-size:13px; color:rgba(255,255,255,0.8);">${businessName}</p>
+        </div>
+        <div style="padding:28px 32px;">
+          <p>A customer has submitted payment proof. Please review and confirm in your CRM.</p>
+          <table style="width:100%; border-collapse:collapse; margin:20px 0;">
+            <tr><td style="padding:10px 12px; font-weight:bold; width:110px;">Order</td><td style="padding:10px 12px;"><strong>${orderNumber}</strong></td></tr>
+            <tr><td style="padding:10px 12px; font-weight:bold;">Customer</td><td style="padding:10px 12px;">${customerName ?? 'Unknown'}</td></tr>
+            <tr><td style="padding:10px 12px; font-weight:bold;">Phone</td><td style="padding:10px 12px;">${customerPhone}</td></tr>
+            <tr><td style="padding:10px 12px; font-weight:bold;">Amount</td><td style="padding:10px 12px;"><strong>${formattedAmount}</strong></td></tr>
+            <tr><td style="padding:10px 12px; font-weight:bold;">Service</td><td style="padding:10px 12px;">${serviceType}</td></tr>
+          </table>
+          <a href="${proofUrl}" style="display:inline-block; padding:10px 20px; background:#1a8a5e; color:#fff; text-decoration:none; border-radius:6px; font-weight:bold;">View Receipt Image →</a>
+        </div>
+      </div>
+    `;
 
     try {
-      await this.transporter.sendMail({
-        from: this.config.get<string>('SMTP_FROM', 'Cliqex Platform <noreply@cliqex.com>'),
-        to: adminEmails.join(', '),
-        subject,
-        text,
+      const { error } = await this.resend.emails.send({
+        from: this.fromAddress,
+        to: adminEmails,
+        subject: `💳 Payment Proof Received — Order ${orderNumber} (${businessName})`,
         html,
       });
-      this.logger.log(
-        `[EMAIL] Payment proof alert sent for order ${orderNumber} → ${adminEmails.join(', ')}`,
-      );
+
+      if (error) {
+        this.logger.error(`[EMAIL] Resend error for order ${orderNumber}: ${JSON.stringify(error)}`);
+        return false;
+      }
+
+      this.logger.log(`[EMAIL] Payment proof alert sent for order ${orderNumber} → ${adminEmails.join(', ')}`);
       return true;
     } catch (err: any) {
       this.logger.error(`[EMAIL] Failed to send payment proof alert: ${err.message}`);
@@ -167,120 +105,62 @@ export class EmailService {
     }
   }
 
-  // ----------------------------------------------------------------
-  // sendNewOrderAlert
-  // Returns true/false — same reasoning as above.
-  // ----------------------------------------------------------------
   async sendNewOrderAlert(params: NewOrderAlertParams): Promise<boolean> {
     const {
-      adminEmails,
-      orderNumber,
-      customerName,
-      customerPhone,
-      serviceType,
-      serviceLabel,
-      items,
-      areaLabel,
-      businessName,
-      crmUrl,
+      adminEmails, orderNumber, customerName, customerPhone,
+      serviceType, serviceLabel, items, areaLabel, businessName, crmUrl,
     } = params;
 
-    if (!adminEmails.length) return false;
+    if (!adminEmails.length) {
+      this.logger.warn(`[EMAIL] No admin emails for order ${orderNumber} — skipping`);
+      return false;
+    }
 
     const displayItems = items.slice(0, 5);
     const remaining = items.length - 5;
-    const itemLines = displayItems.map((i) => `• ${i.name} x${i.quantity}`).join('\n');
-    const itemsText =
-      remaining > 0 ? `${itemLines}\n... and ${remaining} more items` : itemLines;
-
-    const subject = `🛒 New Order — ${orderNumber} (${businessName})`;
-
-    const text = [
-      `A new order has been placed and is waiting for a quote.`,
-      ``,
-      `Order:     ${orderNumber}`,
-      `Customer:  ${customerName ?? 'Unknown'}`,
-      `Phone:     ${customerPhone}`,
-      `Service:   ${serviceLabel ?? serviceType}`,
-      ...(areaLabel ? [`Area:      ${areaLabel}`] : []),
-      ``,
-      `Items:`,
-      itemsText,
-      ``,
-      `Log into your CRM to send a quote.`,
-      `${crmUrl}`,
-      ``,
-      `— Cliqex Platform`,
-    ].join('\n');
-
     const itemsHtml = displayItems
-      .map(
-        (i) =>
-          `<li style="margin:4px 0; font-size:13px;">${i.name} <strong>x${i.quantity}</strong></li>`,
-      )
+      .map((i) => `<li style="margin:4px 0; font-size:13px;">${i.name} <strong>x${i.quantity}</strong></li>`)
       .join('');
-    const remainingHtml =
-      remaining > 0
-        ? `<li style="margin:4px 0; font-size:13px; color:#888;">...and ${remaining} more items</li>`
-        : '';
+    const remainingHtml = remaining > 0
+      ? `<li style="margin:4px 0; font-size:13px; color:#888;">...and ${remaining} more items</li>`
+      : '';
 
     const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <style>
-    body { font-family: Arial, sans-serif; color: #222; background: #f5f5f5; margin: 0; padding: 0; }
-    .wrapper { max-width: 560px; margin: 32px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-    .header { background: #1a8a5e; padding: 24px 32px; }
-    .header h1 { margin: 0; font-size: 20px; color: #fff; }
-    .header p { margin: 4px 0 0; font-size: 13px; color: rgba(255,255,255,0.8); }
-    .body { padding: 28px 32px; }
-    .body p { margin: 0 0 16px; font-size: 14px; line-height: 1.5; }
-    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    td { padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #eee; }
-    td:first-child { font-weight: bold; color: #555; width: 110px; }
-    ul { margin: 8px 0 20px; padding-left: 20px; }
-    .cta { display: inline-block; margin: 4px 0 20px; padding: 10px 20px; background: #1a8a5e; color: #fff !important; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold; }
-    .footer { background: #f9f9f9; border-top: 1px solid #eee; padding: 16px 32px; font-size: 12px; color: #999; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="wrapper">
-    <div class="header">
-      <h1>🛒 New Order Received</h1>
-      <p>${businessName}</p>
-    </div>
-    <div class="body">
-      <p>A new order has been placed and is waiting for a quote.</p>
-      <table>
-        <tr><td>Order</td><td><strong>${orderNumber}</strong></td></tr>
-        <tr><td>Customer</td><td>${customerName ?? 'Unknown'}</td></tr>
-        <tr><td>Phone</td><td>${customerPhone}</td></tr>
-        <tr><td>Service</td><td>${serviceLabel ?? serviceType}</td></tr>
-        ${areaLabel ? `<tr><td>Area</td><td>${areaLabel}</td></tr>` : ''}
-      </table>
-      <p style="margin:0 0 6px; font-size:13px; font-weight:bold; color:#555;">Items:</p>
-      <ul>${itemsHtml}${remainingHtml}</ul>
-      <a href="${crmUrl}" class="cta">Open CRM →</a>
-    </div>
-    <div class="footer">— Cliqex Platform</div>
-  </div>
-</body>
-</html>
-    `.trim();
+      <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto;">
+        <div style="background:#1a8a5e; padding:24px 32px;">
+          <h1 style="margin:0; font-size:20px; color:#fff;">🛒 New Order Received</h1>
+          <p style="margin:4px 0 0; font-size:13px; color:rgba(255,255,255,0.8);">${businessName}</p>
+        </div>
+        <div style="padding:28px 32px;">
+          <p>A new order has been placed and is waiting for a quote.</p>
+          <table style="width:100%; border-collapse:collapse; margin:20px 0;">
+            <tr><td style="padding:10px 12px; font-weight:bold; width:110px;">Order</td><td style="padding:10px 12px;"><strong>${orderNumber}</strong></td></tr>
+            <tr><td style="padding:10px 12px; font-weight:bold;">Customer</td><td style="padding:10px 12px;">${customerName ?? 'Unknown'}</td></tr>
+            <tr><td style="padding:10px 12px; font-weight:bold;">Phone</td><td style="padding:10px 12px;">${customerPhone}</td></tr>
+            <tr><td style="padding:10px 12px; font-weight:bold;">Service</td><td style="padding:10px 12px;">${serviceLabel ?? serviceType}</td></tr>
+            ${areaLabel ? `<tr><td style="padding:10px 12px; font-weight:bold;">Area</td><td style="padding:10px 12px;">${areaLabel}</td></tr>` : ''}
+          </table>
+          <p style="margin:0 0 6px; font-size:13px; font-weight:bold;">Items:</p>
+          <ul style="margin:8px 0 20px; padding-left:20px;">${itemsHtml}${remainingHtml}</ul>
+          <a href="${crmUrl}" style="display:inline-block; padding:10px 20px; background:#1a8a5e; color:#fff; text-decoration:none; border-radius:6px; font-weight:bold;">Open CRM →</a>
+        </div>
+      </div>
+    `;
 
     try {
-      await this.transporter.sendMail({
-        from: this.config.get<string>('SMTP_FROM', 'Cliqex Platform <noreply@cliqex.com>'),
-        to: adminEmails.join(', '),
-        subject,
-        text,
+      const { error } = await this.resend.emails.send({
+        from: this.fromAddress,
+        to: adminEmails,
+        subject: `🛒 New Order — ${orderNumber} (${businessName})`,
         html,
       });
-      this.logger.log(
-        `[EMAIL] New order alert sent for ${orderNumber} → ${adminEmails.join(', ')}`,
-      );
+
+      if (error) {
+        this.logger.error(`[EMAIL] Resend error for order ${orderNumber}: ${JSON.stringify(error)}`);
+        return false;
+      }
+
+      this.logger.log(`[EMAIL] New order alert sent for ${orderNumber} → ${adminEmails.join(', ')}`);
       return true;
     } catch (err: any) {
       this.logger.error(`[EMAIL] Failed to send new order alert: ${err.message}`);

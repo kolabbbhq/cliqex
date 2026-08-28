@@ -93,11 +93,18 @@ const rules = serviceDef?.chargeRules ?? {
 };
 
 const deliveryFee = rules.applyDeliveryFee !== false ? input.deliveryFee : 0;
-const serviceChargePercent =
-  rules.applyServiceCharge !== false ? (serviceConfig?.serviceChargePercent ?? 0) : 0;
 const vatPercent = rules.applyVat !== false ? (serviceConfig?.vatPercent ?? 0) : 0;
 
-const serviceCharge = (subtotal * serviceChargePercent) / 100;
+// ── Service charge: manual admin-entered value takes priority over the % rule ──
+let serviceCharge: number;
+if (input.serviceCharge !== undefined) {
+  serviceCharge = input.serviceCharge;
+} else {
+  const serviceChargePercent =
+    rules.applyServiceCharge !== false ? (serviceConfig?.serviceChargePercent ?? 0) : 0;
+  serviceCharge = (subtotal * serviceChargePercent) / 100;
+}
+
 const vatAmount = ((subtotal + serviceCharge) * vatPercent) / 100;
 
 await this.ordersRepository.updatePricing(

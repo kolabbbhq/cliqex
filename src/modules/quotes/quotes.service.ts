@@ -105,6 +105,8 @@ export class QuotesService {
     const updatedOrder = await this.ordersService.priceItems(orderId, {
       items: input.items,
       deliveryFee: input.deliveryFee,
+      serviceCharge: input.serviceCharge, 
+
     });
 
     const business = await this.businessService.getById(order.businessId);

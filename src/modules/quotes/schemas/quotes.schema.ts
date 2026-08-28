@@ -8,6 +8,7 @@ export const SendQuoteSchema = z.object({
     }),
   ).min(1, 'At least one priced item is required'),
   deliveryFee: z.coerce.number().min(0).default(0),
+  serviceCharge: z.coerce.number().min(0).optional(), // ← NEW: manual override, admin types it in
 });
 
 export const UpdateItemPriceSchema = z.object({

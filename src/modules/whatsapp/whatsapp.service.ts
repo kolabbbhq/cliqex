@@ -113,6 +113,37 @@ export class WhatsappService {
       }
     }
   }
+  private async askCancelRestartConfirmation(
+  phone: string,
+  orderId: string,
+  token: string,
+): Promise<void> {
+  const order = await this.ordersService.findOne(orderId);
+
+  await this.sendButtons({
+    to: phone,
+    body: `Do you want to cancel your current request *${order.orderNumber}* and start a new one?`,
+    buttons: [
+      { id: 'CONFIRM_CANCEL_RESTART', title: '✅ Yes, start new' },
+      { id: 'DECLINE_CANCEL_RESTART', title: '❌ No, keep it' },
+    ],
+    token,
+  });
+}
+
+private async handleCancelAndRestart(
+  phone: string,
+  orderId: string,
+  token: string,
+  businessId: string,
+  customer?: any,
+  isNew?: boolean,
+): Promise<void> {
+  await this.ordersService.cancel(orderId, {
+    reason: 'Customer cancelled to start a new request',
+  });
+  await this.sendGreeting(phone, businessId, token, customer, isNew);
+}
 
   async sendManualImageReply(orderId: string, imageUrl: string, caption?: string): Promise<void> {
   const order = await this.ordersService.findOne(orderId);
@@ -230,6 +261,8 @@ this.gateway.emitToBusinessAdmins(businessId, 'message:new', {
   isNew,
 );
   }
+
+  
   // ----------------------------------------------------------------
   // routeMessage
   // ----------------------------------------------------------------
@@ -262,6 +295,33 @@ this.gateway.emitToBusinessAdmins(businessId, 'message:new', {
     if (payload === 'PAY_PAYSTACK' && activeOrderId) {
       return this.handlePayPaystack(phone, activeOrderId, token);
     }
+
+    if (payload === 'ASK_CANCEL_RESTART' && activeOrderId) {
+  return this.askCancelRestartConfirmation(phone, activeOrderId, token);
+}
+
+// Confirmed via button
+if (payload === 'CONFIRM_CANCEL_RESTART' && activeOrderId) {
+  return this.handleCancelAndRestart(phone, activeOrderId, token, businessId, customer, isNew);
+}
+
+// Declined
+if (payload === 'DECLINE_CANCEL_RESTART' && activeOrderId) {
+  return this.sendText({
+    to: phone,
+    message: `No problem, your request is still active. We'll update you shortly.`,
+    token,
+  });
+}
+// Text keyword fallback → also asks for confirmation, never cancels directly
+if (msg.type === 'text' && msg.text && activeOrderId) {
+  const normalized = msg.text.trim().toLowerCase();
+  const restartKeywords = ['cancel', 'new order', 'restart', 'start over', 'start again'];
+  if (restartKeywords.includes(normalized)) {
+    return this.askCancelRestartConfirmation(phone, activeOrderId, token);
+  }
+}
+
 if (payload?.startsWith('RATING_')) {
   const deliveredOrder = await this.findLastDeliveredOrder(customer.id);
   if (deliveredOrder) {
@@ -972,22 +1032,25 @@ private async handleReviewComment(
     );
   }
 
-  private async sendAutoAckIfNeeded(
-    phone: string,
-    orderId: string,
-    token: string,
-  ): Promise<void> {
-    const order = await this.ordersService.findOne(orderId);
-    if (order.autoAckSent) return;
+private async sendAutoAckIfNeeded(
+  phone: string,
+  orderId: string,
+  token: string,
+): Promise<void> {
+  const order = await this.ordersService.findOne(orderId);
+  if (order.autoAckSent) return;
 
-    await this.sendText({
-      to: phone,
-      message: `Thanks for reaching out to Errandsbuddy! 😊We've received your request and our team is already on it. We'll get back to you as soon as possible.`,
-      token,
-    });
+  await this.sendButtons({
+    to: phone,
+    body: `Thanks for reaching out to Errandsbuddy! 😊 We've received your request and our team is already on it. We'll get back to you as soon as possible.\n\nWant to cancel this and start something new instead?`,
+    buttons: [
+      { id: 'ASK_CANCEL_RESTART', title: '🔄 Start New Request' },
+    ],
+    token,
+  });
 
-    await this.ordersService.setAutoAck(orderId, true);
-  }
+  await this.ordersService.setAutoAck(orderId, true);
+}
 
   async sendManualReply(orderId: string, message: string): Promise<void> {
     const order = await this.ordersService.findOne(orderId);
@@ -1248,21 +1311,27 @@ private async handleReviewComment(
     });
   }
 
-  private parseItemizedField(
-    fieldText: string,
-  ): { name: string; nameLower: string; quantity: string }[] {
-    return fieldText
-      .split(/\n|,/)
-      .map((segment) => segment.trim())
-      .filter(Boolean)
-      .map((segment) => {
-        const match = segment.match(/^(.*?)\s*x\s*(\d+)$/i);
-        const name = match ? match[1].trim() : segment;
-        const quantity = match ? match[2] : '1';
-        return { name, nameLower: name.toLowerCase().trim(), quantity };
-      });
-  }
-
+private parseItemizedField(
+  fieldText: string,
+): { name: string; nameLower: string; quantity: string }[] {
+  return fieldText
+    // split on newlines/semicolons, or commas that are NOT thousands separators
+    .split(/\r?\n+|;+|,(?!\s?\d{3}(?:[.,]\d{3})*\b)/g)
+    .map((segment) => segment.trim())
+    // strip leading list markers like "-", "*", "•", "1." etc.
+    .map((segment) => segment.replace(/^[-*•]\s*/, '').replace(/^\d+[.)]\s*/, ''))
+    .filter(Boolean)
+    // drop fragments that are purely numeric (phantom items)
+    .filter((segment) => !/^\d[\d,.]*$/.test(segment))
+    .map((segment) => {
+      const match = segment.match(/^(.*?)\s*x\s*(\d+)$/i);
+      const name = match ? match[1].trim() : segment;
+      const quantity = match ? match[2] : '1';
+      return { name, nameLower: name.toLowerCase().trim(), quantity };
+    })
+    // guard: drop if name ends up empty or numeric-only after extraction
+    .filter((item) => item.name && !/^\d[\d,.]*$/.test(item.name));
+}
   private extractOrderItems(
     service: FlowServiceDef | null,
     flowData: FlowSubmissionPayload,

@@ -30,6 +30,8 @@ export const PriceAllItemsSchema = z.object({
     }),
   ).min(1, 'At least one item required'),
   deliveryFee: z.number().min(0).default(0),
+  serviceCharge: z.number().min(0).optional(), // ← NEW
+
 });
 
 export const CancelOrderSchema = z.object({
